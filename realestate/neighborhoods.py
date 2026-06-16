@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from realestate.geospatial import (
@@ -21,12 +21,15 @@ from realestate.geospatial import (
 from realestate.models import (
     Favorite,
     Listing,
+    MapHighlight,
+    ProfileNeighborhoodFeedback,
     Property,
     PropertyNeighborhoodMatch,
     SavedNeighborhood,
     SchoolAttendanceZone,
 )
 from realestate.parsing.address_parser import join_address
+from realestate.profiles import all_neighborhood_feedback_for_area, neighborhood_feedback_for_area
 from realestate.school_zones import identify_elementary_zone
 
 NEIGHBORHOOD_RATINGS = {"favorite", "strong_like", "like", "maybe", "avoid"}
@@ -106,12 +109,26 @@ def delete_saved_neighborhood(session: Session, neighborhood_id: int) -> bool:
     neighborhood = session.get(SavedNeighborhood, neighborhood_id)
     if neighborhood is None:
         return False
+    session.execute(
+        delete(ProfileNeighborhoodFeedback).where(
+            ProfileNeighborhoodFeedback.saved_neighborhood_id == neighborhood_id
+        )
+    )
+    session.execute(
+        update(MapHighlight)
+        .where(MapHighlight.related_neighborhood_id == neighborhood_id)
+        .values(related_neighborhood_id=None)
+    )
     session.delete(neighborhood)
     session.flush()
     return True
 
 
-def saved_neighborhoods_geojson(session: Session, include_scores: bool = True) -> dict[str, Any]:
+def saved_neighborhoods_geojson(
+    session: Session,
+    include_scores: bool = True,
+    profile_id: int | None = None,
+) -> dict[str, Any]:
     neighborhoods = session.execute(
         select(SavedNeighborhood).order_by(SavedNeighborhood.rating, SavedNeighborhood.name)
     ).scalars().all()
@@ -122,21 +139,44 @@ def saved_neighborhoods_geojson(session: Session, include_scores: bool = True) -
             from realestate.neighborhood_scoring import score_saved_neighborhood
 
             score = score_saved_neighborhood(session, item, persist=False)
-        features.append(saved_neighborhood_feature(item, score=score))
+        features.append(saved_neighborhood_feature(session, item, score=score, profile_id=profile_id))
     return feature_collection(features)
 
 
 def saved_neighborhood_feature(
+    session: Session,
     neighborhood: SavedNeighborhood,
     score: dict[str, Any] | None = None,
+    profile_id: int | None = None,
 ) -> dict[str, Any]:
+    selected_feedback = neighborhood_feedback_for_area(session, neighborhood.id, profile_id)
+    selected_rating = (
+        selected_feedback.rating if selected_feedback and selected_feedback.rating else neighborhood.rating
+    )
+    selected_notes = (
+        selected_feedback.notes
+        if selected_feedback and selected_feedback.notes is not None
+        else neighborhood.notes
+    )
     return geometry_feature(
         neighborhood.geometry_geojson,
         {
             "id": neighborhood.id,
             "name": neighborhood.name,
-            "rating": neighborhood.rating,
-            "notes": neighborhood.notes,
+            "rating": selected_rating,
+            "notes": selected_notes,
+            "household_rating": neighborhood.rating,
+            "household_notes": neighborhood.notes,
+            "profile_feedback": {
+                "profile_id": profile_id,
+                "rating": selected_feedback.rating if selected_feedback else None,
+                "notes": selected_feedback.notes if selected_feedback else None,
+                "tags": json_loads(selected_feedback.tags_json, []) if selected_feedback else [],
+                "updated_at": selected_feedback.updated_at.isoformat()
+                if selected_feedback and selected_feedback.updated_at
+                else None,
+            },
+            "profile_ratings": all_neighborhood_feedback_for_area(session, neighborhood.id),
             "tags": json_loads(neighborhood.tags_json, []),
             "city": neighborhood.city,
             "source": neighborhood.source,

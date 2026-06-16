@@ -33,6 +33,11 @@ from realestate.models import (
 from realestate.neighborhoods import property_neighborhood_context, saved_neighborhoods_geojson
 from realestate.parsing.address_parser import join_address
 from realestate.paths import MAP_EXPORTS_DIR
+from realestate.profiles import (
+    all_home_feedback_for_listing,
+    home_feedback_for_listing,
+    profiles_payload,
+)
 from realestate.school_zones import identify_property_elementary_zone, school_zones_geojson
 from realestate.schools import (
     count_school_academic_profiles,
@@ -43,22 +48,29 @@ from realestate.schools import (
 from realestate.scoring.overall import latest_score
 
 
-def favorite_homes_geojson(session: Session) -> dict[str, Any]:
+def favorite_homes_geojson(session: Session, profile_id: int | None = None) -> dict[str, Any]:
     favorites = session.execute(select(Favorite).where(Favorite.listing_id.is_not(None))).scalars().all()
     features = []
     for favorite in favorites:
-        feature = favorite_home_feature(session, favorite)
+        feature = favorite_home_feature(session, favorite, profile_id=profile_id)
         if feature is not None:
             features.append(feature)
     return feature_collection(features)
 
 
-def favorite_home_feature(session: Session, favorite: Favorite) -> dict[str, Any] | None:
+def favorite_home_feature(
+    session: Session,
+    favorite: Favorite,
+    profile_id: int | None = None,
+) -> dict[str, Any] | None:
     listing = favorite.listing
     if listing is None:
         return None
     prop = listing.property
     score = latest_score(session, listing)
+    selected_feedback = home_feedback_for_listing(session, listing.id, profile_id)
+    selected_rating = selected_feedback.rating if selected_feedback and selected_feedback.rating else favorite.user_rating
+    selected_notes = selected_feedback.notes if selected_feedback and selected_feedback.notes is not None else favorite.user_notes
     has_location = prop.latitude is not None and prop.longitude is not None
     zone_payload = None
     if has_location:
@@ -81,8 +93,19 @@ def favorite_home_feature(session: Session, favorite: Favorite) -> dict[str, Any
         "lot_size_sqft": listing.lot_size_sqft,
         "garage_spaces": listing.garage_spaces,
         "year_built": listing.year_built,
-        "user_rating": favorite.user_rating,
-        "user_notes": favorite.user_notes,
+        "user_rating": selected_rating,
+        "user_notes": selected_notes,
+        "household_rating": favorite.user_rating,
+        "household_notes": favorite.user_notes,
+        "profile_feedback": {
+            "profile_id": profile_id,
+            "rating": selected_feedback.rating if selected_feedback else None,
+            "notes": selected_feedback.notes if selected_feedback else None,
+            "updated_at": selected_feedback.updated_at.isoformat()
+            if selected_feedback and selected_feedback.updated_at
+            else None,
+        },
+        "profile_ratings": all_home_feedback_for_listing(session, listing.id),
         "score": _score_payload(score),
         "elementary_zone": zone_payload,
         "neighborhood_matches": property_neighborhood_context(session, prop.id),
@@ -188,10 +211,18 @@ def layer_manifest(session: Session) -> list[dict[str, Any]]:
     ]
 
 
-def map_payload(session: Session) -> dict[str, Any]:
+def map_payload(session: Session, profile_id: int | None = None) -> dict[str, Any]:
+    profile_payload = profiles_payload(session, selected_profile_id=profile_id)
+    current_profile_id = (
+        profile_payload["current_profile"]["id"] if profile_payload.get("current_profile") else None
+    )
     return {
-        "homes": favorite_homes_geojson(session),
-        "saved_neighborhoods": saved_neighborhoods_geojson(session),
+        "profiles": profile_payload,
+        "homes": favorite_homes_geojson(session, profile_id=current_profile_id),
+        "saved_neighborhoods": saved_neighborhoods_geojson(
+            session,
+            profile_id=current_profile_id,
+        ),
         "map_highlights": map_highlights_geojson(session),
         "map_notes": map_notes_geojson(session),
         "life_anchors": life_anchor_geojson(session),

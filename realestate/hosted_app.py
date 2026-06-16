@@ -117,8 +117,15 @@ async def api_proxy(path: str, request: Request) -> Response:
     body: dict[str, Any] | None = None
     if request.method in {"POST", "PUT", "PATCH"}:
         body = parse_json_body(await request.body())
+    profile_id = _profile_id_from_request(request)
     with session_scope() as session:
-        api_response = handle_api_request(session, request.method, raw_path, body)
+        api_response = handle_api_request(
+            session,
+            request.method,
+            raw_path,
+            body,
+            profile_id=profile_id,
+        )
     return Response(
         content=response_json(api_response),
         status_code=api_response.status,
@@ -195,6 +202,18 @@ def _secure_cookie(request: Request) -> bool:
 
 def _valid_next_path(path: str) -> bool:
     return path.startswith("/") and not path.startswith("//")
+
+
+def _profile_id_from_request(request: Request) -> int | None:
+    value = request.headers.get("x-homeanalyze-profile-id") or request.cookies.get(
+        "homeanalyze_profile_id"
+    )
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def _allowed_report_path(raw_path: str) -> Path:

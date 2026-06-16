@@ -175,29 +175,38 @@ realestate neighborhoods import data/exports/saved_neighborhoods.geojson
 
 The same map hub can run as a private Vercel-hosted mobile app without a custom
 domain. The Vercel FastAPI entrypoint is root `app.py`, which exposes the ASGI
-application as `app`.
+application as `app`. Supabase Postgres is the preferred free-tier shared
+database path; the app connects from the server and does not expose database
+credentials to the browser.
 
 Before sharing a generated `*.vercel.app` link, configure:
 
 ```text
 HOMEANALYZE_ACCESS_CODE=
 HOMEANALYZE_AUTH_SECRET=
-DATABASE_URL=<Vercel Marketplace Postgres URL>
+DATABASE_URL=<Supabase Postgres connection string>
+HOMEANALYZE_HOUSEHOLD_NAME=Home Search
+HOMEANALYZE_PROFILE_NAMES=Adult 1,Adult 2
 ```
 
 The hosted app will not use a fallback SQLite database on Vercel. If
 `DATABASE_URL` / `POSTGRES_URL` is missing, it returns a setup error instead of
 showing an empty workspace.
 
-Back up and migrate local data:
+Back up and migrate local data into Supabase:
 
 ```powershell
 realestate db backup --output data/exports/database_backup_before_vercel.json
 realestate db status
-$env:DATABASE_URL = "<hosted postgres url>"
+$env:DATABASE_URL = "<supabase postgres url with sslmode=require>"
 realestate db migrate-sqlite --sqlite-path data/realestate.db --replace
+realestate profiles init --household-name "Home Search" --profile "Adult 1" --profile "Adult 2"
 realestate db status
 ```
+
+The map sidebar includes a profile selector. Homes, saved areas, school zones,
+parks, highlights, and imported layers are shared household data; each profile
+can keep separate ratings and notes for homes and saved areas.
 
 Local hosted-app smoke test:
 
@@ -216,6 +225,8 @@ vars, migration path, and mobile UX notes.
 realestate init
 realestate db backup
 realestate db migrate-sqlite --sqlite-path data/realestate.db --replace
+realestate profiles init --household-name "Home Search" --profile "Adult 1" --profile "Adult 2"
+realestate profiles list
 realestate import-favorites data/imports/favorites.csv
 realestate import-listing-text data/imports/listing_text_example.md
 realestate import-life-anchors config/life_anchors.yaml

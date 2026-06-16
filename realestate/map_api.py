@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from realestate.enrichment.geocoding import enrich_geocode_context
@@ -30,6 +30,7 @@ from realestate.models import (
     Listing,
     LLMExtraction,
     MapNote,
+    ProfileHomeFeedback,
     PropertyNeighborhoodMatch,
     Report,
     SavedNeighborhood,
@@ -41,6 +42,13 @@ from realestate.neighborhoods import (
     saved_neighborhood_feature,
     saved_neighborhoods_geojson,
     update_saved_neighborhood,
+)
+from realestate.profiles import (
+    create_profile,
+    profiles_payload,
+    resolve_profile,
+    upsert_home_feedback,
+    upsert_neighborhood_feedback,
 )
 from realestate.school_zones import identify_elementary_zone, school_zones_geojson
 from realestate.schools import enrich_school_zone_payload, school_locations_geojson
@@ -58,19 +66,33 @@ def handle_api_request(
     method: str,
     raw_path: str,
     body: dict[str, Any] | None = None,
+    profile_id: int | None = None,
 ) -> ApiResponse:
     parsed = urlparse(raw_path)
     path = parsed.path.rstrip("/") or "/"
     body = body or {}
 
     try:
+        if method == "GET" and path == "/api/profiles":
+            return ApiResponse(200, profiles_payload(session, selected_profile_id=profile_id))
+        if method == "POST" and path == "/api/profiles":
+            profile = create_profile(
+                session,
+                display_name=str(body.get("display_name") or body.get("name") or ""),
+                color=body.get("color"),
+                auth_email=body.get("auth_email"),
+            )
+            return ApiResponse(
+                201,
+                profiles_payload(session, selected_profile_id=profile.id),
+            )
         if method == "GET" and path == "/api/map-data":
-            return ApiResponse(200, map_payload(session))
+            return ApiResponse(200, map_payload(session, profile_id=profile_id))
         if method == "GET" and path == "/api/homes":
-            return ApiResponse(200, favorite_homes_geojson(session))
+            return ApiResponse(200, favorite_homes_geojson(session, profile_id=profile_id))
         if method == "POST" and path == "/api/homes":
             favorite = _create_favorite_home(session, body)
-            feature = favorite_home_feature(session, favorite)
+            feature = favorite_home_feature(session, favorite, profile_id=profile_id)
             if feature is None:
                 return ApiResponse(500, {"error": "Favorite was saved but could not be rendered."})
             return ApiResponse(201, feature)
@@ -79,7 +101,7 @@ def handle_api_request(
             deleted = _delete_home(session, listing_id)
             return ApiResponse(200 if deleted else 404, {"deleted": deleted, "listing_id": listing_id})
         if method == "GET" and path == "/api/neighborhoods":
-            return ApiResponse(200, saved_neighborhoods_geojson(session))
+            return ApiResponse(200, saved_neighborhoods_geojson(session, profile_id=profile_id))
         if method == "POST" and path == "/api/neighborhoods":
             neighborhood = create_saved_neighborhood(
                 session,
@@ -90,11 +112,17 @@ def handle_api_request(
                 tags=body.get("tags") or [],
                 city=body.get("city"),
             )
-            return ApiResponse(201, saved_neighborhood_feature(neighborhood))
+            return ApiResponse(201, saved_neighborhood_feature(session, neighborhood, profile_id=profile_id))
         if method in {"PUT", "PATCH"} and path.startswith("/api/neighborhoods/"):
             neighborhood_id = _path_id(path, "/api/neighborhoods/")
             neighborhood = update_saved_neighborhood(session, neighborhood_id, body)
-            return ApiResponse(200, saved_neighborhood_feature(neighborhood))
+            return ApiResponse(200, saved_neighborhood_feature(session, neighborhood, profile_id=profile_id))
+        if method == "POST" and path.startswith("/api/neighborhoods/") and path.endswith("/feedback"):
+            neighborhood_id = _path_id(path.removesuffix("/feedback"), "/api/neighborhoods/")
+            return ApiResponse(
+                200,
+                _update_neighborhood_profile_feedback(session, profile_id, neighborhood_id, body),
+            )
         if method == "DELETE" and path.startswith("/api/neighborhoods/"):
             neighborhood_id = _path_id(path, "/api/neighborhoods/")
             deleted = delete_saved_neighborhood(session, neighborhood_id)
@@ -155,7 +183,7 @@ def handle_api_request(
             )
         if method == "POST" and path.startswith("/api/favorites/") and path.endswith("/feedback"):
             listing_id = _path_id(path.removesuffix("/feedback"), "/api/favorites/")
-            return ApiResponse(200, _update_favorite_feedback(session, listing_id, body))
+            return ApiResponse(200, _update_favorite_feedback(session, profile_id, listing_id, body))
         if method == "POST" and path.startswith("/api/neighborhoods/") and path.endswith("/link-home"):
             neighborhood_id = _path_id(path.removesuffix("/link-home"), "/api/neighborhoods/")
             property_id = int(body["property_id"])
@@ -295,6 +323,7 @@ def _delete_home(session: Session, listing_id: int) -> bool:
     listing = session.get(Listing, listing_id)
     if listing is None:
         return False
+    session.execute(delete(ProfileHomeFeedback).where(ProfileHomeFeedback.listing_id == listing_id))
     for report in session.execute(select(Report).where(Report.listing_id == listing_id)).scalars():
         report.listing_id = None
     for extraction in session.execute(
@@ -308,15 +337,29 @@ def _delete_home(session: Session, listing_id: int) -> bool:
 
 def _update_favorite_feedback(
     session: Session,
+    profile_id: int | None,
     listing_id: int,
     body: dict[str, Any],
 ) -> dict[str, Any]:
     listing = session.get(Listing, listing_id)
     if listing is None:
         raise ValueError(f"Listing {listing_id} not found.")
-    favorite = session.execute(
-        select(Favorite).where(Favorite.listing_id == listing_id)
-    ).scalar_one_or_none()
+    if profile_id and resolve_profile(session, profile_id):
+        feedback = upsert_home_feedback(
+            session,
+            profile_id=profile_id,
+            listing_id=listing_id,
+            rating=str(body["rating"]) if "rating" in body else None,
+            notes=body["notes"] if "notes" in body else None,
+        )
+        return {
+            "listing_id": listing_id,
+            "profile_id": profile_id,
+            "rating": feedback.rating,
+            "notes": feedback.notes,
+            "scope": "profile",
+        }
+    favorite = session.execute(select(Favorite).where(Favorite.listing_id == listing_id)).scalar_one_or_none()
     if favorite is None:
         favorite = Favorite(listing=listing, external_url=listing.listing_url)
         session.add(favorite)
@@ -331,6 +374,34 @@ def _update_favorite_feedback(
         "favorite_id": favorite.id,
         "rating": favorite.user_rating,
         "notes": favorite.user_notes,
+        "scope": "household",
+    }
+
+
+def _update_neighborhood_profile_feedback(
+    session: Session,
+    profile_id: int | None,
+    neighborhood_id: int,
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    if not profile_id or not resolve_profile(session, profile_id):
+        raise ValueError("Select a profile before saving personal neighborhood feedback.")
+    if session.get(SavedNeighborhood, neighborhood_id) is None:
+        raise ValueError(f"Saved neighborhood {neighborhood_id} not found.")
+    feedback = upsert_neighborhood_feedback(
+        session,
+        profile_id=profile_id,
+        neighborhood_id=neighborhood_id,
+        rating=str(body["rating"]) if "rating" in body else None,
+        notes=body["notes"] if "notes" in body else None,
+        tags=body.get("tags") if "tags" in body else None,
+    )
+    return {
+        "neighborhood_id": neighborhood_id,
+        "profile_id": profile_id,
+        "rating": feedback.rating,
+        "notes": feedback.notes,
+        "scope": "profile",
     }
 
 

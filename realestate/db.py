@@ -9,6 +9,7 @@ from threading import Lock
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from realestate.config import get_db_path, load_environment
 from realestate.models import Base
@@ -111,6 +112,8 @@ def make_engine(db_path: Path | None = None, url: str | None = None) -> Engine:
     kwargs = {"future": True, "pool_pre_ping": not is_sqlite_url(resolved_url)}
     if is_sqlite_url(resolved_url):
         kwargs["connect_args"] = {"check_same_thread": False}
+    elif _database_pool_mode() == "null":
+        kwargs["poolclass"] = NullPool
     return create_engine(resolved_url, **kwargs)
 
 
@@ -157,3 +160,11 @@ def session_scope(db_path: Path | None = None, url: str | None = None) -> Iterat
         raise
     finally:
         session.close()
+
+
+def _database_pool_mode() -> str:
+    load_environment()
+    configured = os.getenv("HOMEANALYZE_DB_POOL")
+    if configured:
+        return configured.strip().lower()
+    return "null" if is_hosted_runtime() else "default"

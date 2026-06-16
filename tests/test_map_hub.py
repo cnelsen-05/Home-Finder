@@ -14,6 +14,8 @@ from realestate.models import (
     Listing,
     LLMExtraction,
     MapFeature,
+    ProfileHomeFeedback,
+    ProfileNeighborhoodFeedback,
     Property,
     PropertyNeighborhoodMatch,
     Report,
@@ -28,6 +30,7 @@ from realestate.neighborhoods import (
     import_saved_neighborhoods,
     match_homes_to_neighborhoods,
 )
+from realestate.profiles import ensure_household_profiles, profiles_payload
 from realestate.reports.render import render_neighborhood_report
 from realestate.school_zones import identify_elementary_zone, import_attendance_zones
 from realestate.schools import (
@@ -270,6 +273,99 @@ def test_map_api_adds_home_with_clicked_map_pin(session, tmp_path) -> None:
     props = response.payload["properties"]
     assert props["has_location"] is True
     assert props["elementary_zone"]["school_name"] == "Birch Elementary"
+
+
+def test_profiles_payload_respects_requested_household(session) -> None:
+    ensure_household_profiles(
+        session,
+        household_name="Smoke Home",
+        profile_names=["Adult 1", "Adult 2"],
+    )
+    session.flush()
+
+    payload = profiles_payload(session, household_name="Smoke Home")
+
+    assert payload["household"]["name"] == "Smoke Home"
+    assert [profile["display_name"] for profile in payload["profiles"]] == ["Adult 1", "Adult 2"]
+
+
+def test_profile_feedback_overlays_shared_home_and_neighborhood_state(session) -> None:
+    listing = _add_listing(session, "100 Profile Pocket Ave", -93.50, 45.50)
+    neighborhood = create_saved_neighborhood(
+        session,
+        name="Shared pocket",
+        geometry=_square(-93.8, 45.2, -93.2, 45.8),
+        rating="favorite",
+        notes="Shared household note.",
+        tags=["quiet_street"],
+    )
+    session.flush()
+
+    profiles = handle_api_request(session, "GET", "/api/profiles").payload
+    primary_profile_id = profiles["current_profile"]["id"]
+    partner = handle_api_request(
+        session,
+        "POST",
+        "/api/profiles",
+        {"display_name": "Partner"},
+    ).payload["current_profile"]
+
+    home_feedback = handle_api_request(
+        session,
+        "POST",
+        f"/api/favorites/{listing.id}/feedback",
+        {"rating": "strong_like", "notes": "My home note."},
+        profile_id=primary_profile_id,
+    )
+    area_feedback = handle_api_request(
+        session,
+        "POST",
+        f"/api/neighborhoods/{neighborhood.id}/feedback",
+        {"rating": "avoid", "notes": "Too close to a busy road.", "tags": ["road_noise"]},
+        profile_id=primary_profile_id,
+    )
+    session.flush()
+
+    assert home_feedback.payload["scope"] == "profile"
+    assert area_feedback.payload["scope"] == "profile"
+    favorite = session.execute(select(Favorite).where(Favorite.listing_id == listing.id)).scalars().one()
+    assert favorite.user_rating == "like"
+    assert neighborhood.rating == "favorite"
+
+    homes = handle_api_request(session, "GET", "/api/homes", profile_id=primary_profile_id).payload
+    home_props = homes["features"][0]["properties"]
+    assert home_props["user_rating"] == "strong_like"
+    assert home_props["household_rating"] == "like"
+    assert home_props["profile_feedback"]["notes"] == "My home note."
+    assert home_props["profile_ratings"][0]["rating"] == "strong_like"
+
+    partner_homes = handle_api_request(session, "GET", "/api/homes", profile_id=partner["id"]).payload
+    assert partner_homes["features"][0]["properties"]["user_rating"] == "like"
+
+    areas = handle_api_request(
+        session,
+        "GET",
+        "/api/neighborhoods",
+        profile_id=primary_profile_id,
+    ).payload
+    area_props = areas["features"][0]["properties"]
+    assert area_props["rating"] == "avoid"
+    assert area_props["household_rating"] == "favorite"
+    assert area_props["profile_feedback"]["tags"] == ["road_noise"]
+
+    partner_areas = handle_api_request(
+        session,
+        "GET",
+        "/api/neighborhoods",
+        profile_id=partner["id"],
+    ).payload
+    assert partner_areas["features"][0]["properties"]["rating"] == "favorite"
+
+    assert handle_api_request(session, "DELETE", f"/api/homes/{listing.id}").status == 200
+    assert handle_api_request(session, "DELETE", f"/api/neighborhoods/{neighborhood.id}").status == 200
+    session.flush()
+    assert session.execute(select(ProfileHomeFeedback)).scalars().all() == []
+    assert session.execute(select(ProfileNeighborhoodFeedback)).scalars().all() == []
 
 
 def test_school_locations_and_niche_rankings_enrich_zone_api(session, tmp_path) -> None:

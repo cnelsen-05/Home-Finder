@@ -67,13 +67,28 @@ class MapRequestHandler(BaseHTTPRequestHandler):
         body: dict[str, Any] | None = None,
     ) -> None:
         with session_scope() as session:
-            response = handle_api_request(session, method, path, body)
+            response = handle_api_request(
+                session,
+                method,
+                path,
+                body,
+                profile_id=self._profile_id(),
+            )
         payload = response_json(response)
         self.send_response(response.status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
+
+    def _profile_id(self) -> int | None:
+        raw = self.headers.get("X-HomeAnalyze-Profile-Id")
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
 
     def _send_static(self, raw_name: str) -> None:
         try:

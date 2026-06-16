@@ -201,6 +201,95 @@ class LifeAnchor(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Household(Base, TimestampMixin):
+    __tablename__ = "households"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    shared_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    profiles: Mapped[list[HouseholdProfile]] = relationship(
+        "HouseholdProfile",
+        back_populates="household",
+        cascade="all,delete",
+    )
+
+
+class HouseholdProfile(Base, TimestampMixin):
+    __tablename__ = "household_profiles"
+    __table_args__ = (
+        UniqueConstraint("household_id", "display_name", name="uq_household_profile_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("households.id"), index=True)
+    display_name: Mapped[str] = mapped_column(String(120), index=True)
+    role: Mapped[str] = mapped_column(String(40), default="member")
+    color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    auth_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    supabase_user_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    household: Mapped[Household] = relationship("Household", back_populates="profiles")
+    home_feedback: Mapped[list[ProfileHomeFeedback]] = relationship(
+        "ProfileHomeFeedback",
+        back_populates="profile",
+        cascade="all,delete",
+    )
+    neighborhood_feedback: Mapped[list[ProfileNeighborhoodFeedback]] = relationship(
+        "ProfileNeighborhoodFeedback",
+        back_populates="profile",
+        cascade="all,delete",
+    )
+
+
+class ProfileHomeFeedback(Base, TimestampMixin):
+    __tablename__ = "profile_home_feedback"
+    __table_args__ = (
+        UniqueConstraint("profile_id", "listing_id", name="uq_profile_home_feedback"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("household_profiles.id"), index=True)
+    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id"), index=True)
+    rating: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    profile: Mapped[HouseholdProfile] = relationship(
+        "HouseholdProfile",
+        back_populates="home_feedback",
+    )
+    listing: Mapped[Listing] = relationship("Listing")
+
+
+class ProfileNeighborhoodFeedback(Base, TimestampMixin):
+    __tablename__ = "profile_neighborhood_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "profile_id",
+            "saved_neighborhood_id",
+            name="uq_profile_neighborhood_feedback",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("household_profiles.id"), index=True)
+    saved_neighborhood_id: Mapped[int] = mapped_column(
+        ForeignKey("saved_neighborhoods.id"),
+        index=True,
+    )
+    rating: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    profile: Mapped[HouseholdProfile] = relationship(
+        "HouseholdProfile",
+        back_populates="neighborhood_feedback",
+    )
+    saved_neighborhood: Mapped[SavedNeighborhood] = relationship("SavedNeighborhood")
+
+
 class MapLayer(Base, TimestampMixin):
     __tablename__ = "map_layers"
 

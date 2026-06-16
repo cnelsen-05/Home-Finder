@@ -84,6 +84,20 @@ h1 {
   line-height: 1.35;
 }
 
+.profile-panel {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfa;
+  margin-bottom: 14px;
+  padding: 10px;
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 .field-label {
   display: block;
   font-size: 12px;
@@ -186,6 +200,24 @@ select {
   margin-top: 3px;
 }
 
+.profile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.profile-badge {
+  background: color-mix(in srgb, var(--profile-color) 14%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--profile-color) 55%, #ffffff);
+  border-radius: 999px;
+  color: var(--ink);
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 3px 7px;
+}
+
 .map-wrap {
   min-width: 0;
   position: relative;
@@ -216,6 +248,29 @@ select {
 .summary-box h3 {
   font-size: 14px;
   margin-bottom: 8px;
+}
+
+.profile-summary {
+  border-left: 4px solid var(--blue);
+}
+
+.profile-response-row {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--profile-color);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  margin-top: 7px;
+  padding: 8px;
+}
+
+.profile-response-row strong {
+  font-size: 13px;
+}
+
+.profile-response-row span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .metric-grid {
@@ -435,6 +490,19 @@ button:hover {
   font-size: 12px;
 }
 
+.profile-tag-grid {
+  display: grid;
+  gap: 4px 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-tag-grid label {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
 .leaflet-container {
   background: #dde5de;
 }
@@ -569,7 +637,8 @@ button:hover {
     grid-template-columns: 1fr;
   }
 
-  .checkbox-grid {
+  .checkbox-grid,
+  .profile-tag-grid {
     grid-template-columns: 1fr;
   }
 

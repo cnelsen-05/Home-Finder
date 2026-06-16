@@ -33,6 +33,7 @@ from realestate.neighborhoods import (
     match_homes_to_neighborhoods,
 )
 from realestate.paths import EXPORTS_DIR, ensure_project_dirs
+from realestate.profiles import create_profile, ensure_household_profiles, profiles_payload
 from realestate.reports.render import (
     render_agent_questions,
     render_all_favorite_reviews,
@@ -79,6 +80,7 @@ school_locations_app = typer.Typer(help="Elementary school location commands.")
 school_rankings_app = typer.Typer(help="School academic/ranking import commands.")
 neighborhoods_app = typer.Typer(help="Saved neighborhood commands.")
 highlights_app = typer.Typer(help="Liked/avoided map highlight commands.")
+profiles_app = typer.Typer(help="Household profile commands.")
 map_data_app = typer.Typer(help="Map-data export commands.")
 map_layers_app = typer.Typer(help="Optional map-layer cache/import commands.")
 db_app = typer.Typer(help="Database backup and hosted migration commands.")
@@ -89,6 +91,7 @@ app.add_typer(school_locations_app, name="school-locations")
 app.add_typer(school_rankings_app, name="school-rankings")
 app.add_typer(neighborhoods_app, name="neighborhoods")
 app.add_typer(highlights_app, name="highlights")
+app.add_typer(profiles_app, name="profiles")
 app.add_typer(map_data_app, name="map-data")
 app.add_typer(map_layers_app, name="map-layers")
 app.add_typer(db_app, name="db")
@@ -221,6 +224,65 @@ def import_listings(path: Annotated[Path, typer.Argument(help="Manual listing CS
     with session_scope() as session:
         listings = import_listings_csv(path, session)
         typer.echo(f"Imported or updated {len(listings)} listings.")
+
+
+@profiles_app.command("init")
+def profiles_init(
+    household_name: Annotated[
+        str,
+        typer.Option("--household-name", help="Shared household/workspace name."),
+    ] = "Home Search",
+    profile: Annotated[
+        list[str] | None,
+        typer.Option("--profile", help="Profile display name. Repeat for each household member."),
+    ] = None,
+) -> None:
+    """Create the shared household and app-level profiles."""
+
+    with session_scope() as session:
+        household = ensure_household_profiles(
+            session,
+            household_name=household_name,
+            profile_names=profile or None,
+        )
+        payload = profiles_payload(session, household_name=household_name)
+        typer.echo(f"Household: {household.name}")
+        for item in payload["profiles"]:
+            default = " (default)" if item.get("is_default") else ""
+            typer.echo(f"{item['id']}: {item['display_name']}{default}")
+
+
+@profiles_app.command("add")
+def profiles_add(
+    display_name: Annotated[str, typer.Argument(help="Profile display name.")],
+    color: Annotated[str | None, typer.Option("--color", help="Optional profile color hex.")] = None,
+    auth_email: Annotated[
+        str | None,
+        typer.Option("--auth-email", help="Optional future Supabase Auth email mapping."),
+    ] = None,
+) -> None:
+    """Add a profile to the shared household."""
+
+    with session_scope() as session:
+        profile = create_profile(
+            session,
+            display_name=display_name,
+            color=color,
+            auth_email=auth_email,
+        )
+        typer.echo(f"{profile.id}: {profile.display_name}")
+
+
+@profiles_app.command("list")
+def profiles_list() -> None:
+    """List household profiles."""
+
+    with session_scope() as session:
+        payload = profiles_payload(session)
+        typer.echo(f"Household: {payload['household']['name']}")
+        for item in payload["profiles"]:
+            default = " (default)" if item.get("is_default") else ""
+            typer.echo(f"{item['id']}: {item['display_name']}{default}")
 
 
 @app.command("enrich")

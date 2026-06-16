@@ -27,6 +27,7 @@ const state = {
   highlightLayers: new Map(),
   schoolZoneLayers: new Map(),
   userLocationMarker: null,
+  currentProfileId: Number(localStorage.getItem("homeanalyzeProfileId")) || null,
   activeNeighborhoodId: null,
   activeSchoolZoneId: null,
   activeDrawHandler: null,
@@ -132,6 +133,8 @@ function bindStaticControls() {
   document.getElementById("saveNoteButton").addEventListener("click", saveQuickNote);
   document.getElementById("searchBox").addEventListener("input", renderLists);
   document.getElementById("addHomeForm").addEventListener("submit", addHomeFromForm);
+  document.getElementById("profileSelect").addEventListener("change", switchProfile);
+  document.getElementById("addProfileButton").addEventListener("click", addProfile);
   document.getElementById("mobileOpenMenu")?.addEventListener("click", () => toggleMobilePanel("menu"));
   document.getElementById("mobileOpenDetails")?.addEventListener("click", () => toggleMobilePanel("details"));
   document.getElementById("mobileUseLocation")?.addEventListener("click", useCurrentLocation);
@@ -205,6 +208,12 @@ function registerServiceWorker() {
 
 async function loadMapData() {
   state.data = await api("/api/map-data");
+  const currentProfile = state.data.profiles?.current_profile;
+  if (currentProfile?.id && currentProfile.id !== state.currentProfileId) {
+    state.currentProfileId = currentProfile.id;
+    localStorage.setItem("homeanalyzeProfileId", String(currentProfile.id));
+  }
+  renderProfileSelector();
   renderLayers();
   renderLists();
   renderWelcome();
@@ -498,6 +507,7 @@ function homeListItem(feature) {
   return `<button class="list-item" data-home-id="${props.listing_id}" type="button">
     <span class="item-title">${escapeHtml(props.address || "Unknown address")}</span>
     <span class="item-subtitle">${escapeHtml(props.user_rating || "unrated")} - ${score} - ${mapStatus}</span>
+    ${profileBadgesHtml(props.profile_ratings || [])}
   </button>`;
 }
 
@@ -508,6 +518,7 @@ function areaListItem(feature) {
     <span class="item-title">${escapeHtml(props.name || "Saved area")}</span>
     <span class="item-subtitle">Fit ${fit}</span>
     <span class="item-subtitle">${escapeHtml(props.rating || "maybe")} - ${(props.tags || []).slice(0, 3).map(escapeHtml).join(", ")}</span>
+    ${profileBadgesHtml(props.profile_ratings || [])}
   </button>`;
 }
 
@@ -528,7 +539,7 @@ function renderWelcome() {
   document.getElementById("detailsBody").innerHTML = `
     <div class="summary-box">
       <h3>Status</h3>
-      <p class="meta">${state.data.homes.features.length} homes, ${state.data.saved_neighborhoods.features.length} saved areas, ${state.data.map_highlights.features.length} highlights, ${schoolCount} elementary zones, ${schoolLocationCount} school locations, ${parksCount} parks/trails/playgrounds.</p>
+      <p class="meta">${escapeHtml(currentProfileLabel())}: ${state.data.homes.features.length} homes, ${state.data.saved_neighborhoods.features.length} saved areas, ${state.data.map_highlights.features.length} highlights, ${schoolCount} elementary zones, ${schoolLocationCount} school locations, ${parksCount} parks/trails/playgrounds.</p>
     </div>
     <div class="warning">School assignments are likely matches from imported public data. Verify directly with the district before relying.</div>
   `;
@@ -564,11 +575,13 @@ function renderHomeDetails(feature) {
       ${matches.length ? `<div class="tag-list">${matches.map(matchTag).join("")}</div>` : `<p class="meta">Outside saved pockets or not matched yet.</p>`}
       ${highlights.length ? `<div class="tag-list">${highlights.map(highlightTag).join("")}</div>` : `<p class="meta">No liked/avoided highlight match yet.</p>`}
     </div>
+    ${profileFeedbackSummaryHtml(props.profile_ratings || [])}
     <div class="summary-box">
       ${schoolZoneCardHtml(zone, "Elementary Zone")}
     </div>
     <div class="summary-box">
-      <h3>Actions</h3>
+      <h3>${escapeHtml(currentProfileLabel())} Home Response</h3>
+      <p class="meta">This saves only the selected profile's rating and notes. Shared household notes stay preserved.</p>
       <div class="form-grid">
         <select id="homeRating">
           ${["strong_like", "like", "maybe", "dislike", "reject"].map((rating) => `<option value="${rating}" ${rating === selectedRating ? "selected" : ""}>${rating.replace("_", " ")}</option>`).join("")}
@@ -603,6 +616,7 @@ function renderNeighborhoodDetails(feature) {
       <div class="tag-list">${(props.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") || `<span class="meta">No tags yet</span>`}</div>
       <p class="meta">${escapeHtml(props.rating || "maybe")} - ${escapeHtml(props.city || "city unknown")}</p>
     </div>
+    ${profileFeedbackSummaryHtml(props.profile_ratings || [])}
     <div class="summary-box">
       <h3>Neighborhood Fit</h3>
       <div class="metric-grid">
@@ -629,17 +643,23 @@ function renderNeighborhoodForm({ feature = null, geometry }) {
     document.getElementById("detailsBody").innerHTML = "";
   }
   const checkedTags = new Set(props.tags || []);
+  const sharedRating = props.household_rating || props.rating || "maybe";
+  const sharedNotes = props.household_notes != null ? props.household_notes : props.notes || "";
+  const profileFeedback = props.profile_feedback || {};
+  const profileRating = profileFeedback.rating || props.rating || "maybe";
+  const profileNotes = profileFeedback.notes != null ? profileFeedback.notes : "";
+  const profileTags = new Set(profileFeedback.tags || []);
   const form = `
     <div class="summary-box">
-      <h3>${feature ? "Edit Area" : "Save Drawn Area"}</h3>
+      <h3>${feature ? "Shared Area Boundary" : "Save Drawn Area"}</h3>
       <div class="form-grid">
         <input id="areaName" class="text-input" value="${escapeHtml(props.name || "")}" placeholder="Name">
         <select id="areaRating">
-          ${["favorite", "strong_like", "like", "maybe", "avoid"].map((rating) => `<option value="${rating}" ${rating === (props.rating || "maybe") ? "selected" : ""}>${rating.replace("_", " ")}</option>`).join("")}
+          ${["favorite", "strong_like", "like", "maybe", "avoid"].map((rating) => `<option value="${rating}" ${rating === sharedRating ? "selected" : ""}>${rating.replace("_", " ")}</option>`).join("")}
         </select>
         <input id="areaCity" class="text-input" value="${escapeHtml(props.city || "")}" placeholder="City">
-        <textarea id="areaNotes" class="text-area" placeholder="Notes">${escapeHtml(props.notes || "")}</textarea>
-        <div class="checkbox-grid">
+        <textarea id="areaNotes" class="text-area" placeholder="Shared notes">${escapeHtml(sharedNotes)}</textarea>
+        <div id="areaTags" class="checkbox-grid">
           ${tagOptions.map((tag) => `<label><input type="checkbox" value="${tag}" ${checkedTags.has(tag) ? "checked" : ""}> ${tag.replaceAll("_", " ")}</label>`).join("")}
         </div>
         <div class="button-row">
@@ -648,9 +668,27 @@ function renderNeighborhoodForm({ feature = null, geometry }) {
         </div>
       </div>
     </div>
+    ${feature ? `
+      <div class="summary-box profile-summary">
+        <h3>${escapeHtml(currentProfileLabel())} Area Response</h3>
+        <p class="meta">Personal rating and notes for the selected profile.</p>
+        <div class="form-grid">
+          <select id="areaProfileRating">
+            ${["favorite", "strong_like", "like", "maybe", "avoid"].map((rating) => `<option value="${rating}" ${rating === profileRating ? "selected" : ""}>${rating.replace("_", " ")}</option>`).join("")}
+          </select>
+          <textarea id="areaProfileNotes" class="text-area" placeholder="Personal area notes">${escapeHtml(profileNotes)}</textarea>
+          <div id="areaProfileTags" class="profile-tag-grid">
+            ${tagOptions.map((tag) => `<label><input type="checkbox" value="${tag}" ${profileTags.has(tag) ? "checked" : ""}> ${tag.replaceAll("_", " ")}</label>`).join("")}
+          </div>
+          <button id="saveAreaFeedbackButton" type="button">Save My Response</button>
+        </div>
+      </div>
+    ` : ""}
   `;
   document.getElementById("detailsBody").insertAdjacentHTML("beforeend", form);
   document.getElementById("saveAreaButton").addEventListener("click", () => saveArea(feature, geometry));
+  const feedbackButton = document.getElementById("saveAreaFeedbackButton");
+  if (feedbackButton) feedbackButton.addEventListener("click", () => saveNeighborhoodFeedback(props));
   const deleteButton = document.getElementById("deleteAreaButton");
   if (deleteButton) deleteButton.addEventListener("click", () => deleteArea(props.id));
   openMobilePanel("details");
@@ -694,7 +732,7 @@ function renderHighlightForm({ feature = null, geometry, highlightType = "tour_n
           ${["favorite", "like", "maybe", "avoid"].map((value) => `<option value="${value}" ${value === sentiment ? "selected" : ""}>${value}</option>`).join("")}
         </select>
         <textarea id="highlightNotes" class="text-area" placeholder="What did we notice?">${escapeHtml(props.notes || "")}</textarea>
-        <div class="checkbox-grid">
+        <div id="highlightTags" class="checkbox-grid">
           ${tagOptions.map((tag) => `<label><input type="checkbox" value="${tag}" ${checkedTags.has(tag) ? "checked" : ""}> ${tag.replaceAll("_", " ")}</label>`).join("")}
         </div>
         <div class="button-row">
@@ -790,7 +828,7 @@ function renderNoteDetails(feature) {
 }
 
 async function saveArea(feature, geometry) {
-  const tags = [...document.querySelectorAll(".checkbox-grid input:checked")].map((input) => input.value);
+  const tags = [...document.querySelectorAll("#areaTags input:checked")].map((input) => input.value);
   const payload = {
     name: document.getElementById("areaName").value,
     rating: document.getElementById("areaRating").value,
@@ -808,6 +846,20 @@ async function saveArea(feature, geometry) {
   await loadMapData();
 }
 
+async function saveNeighborhoodFeedback(props) {
+  await api(`/api/neighborhoods/${props.id}/feedback`, {
+    method: "POST",
+    body: {
+      rating: document.getElementById("areaProfileRating").value,
+      notes: document.getElementById("areaProfileNotes").value,
+      tags: [...document.querySelectorAll("#areaProfileTags input:checked")].map((input) => input.value),
+    },
+  });
+  await loadMapData();
+  const feature = (state.data.saved_neighborhoods.features || []).find((item) => item.properties.id === props.id);
+  if (feature) renderNeighborhoodDetails(feature);
+}
+
 async function deleteArea(id) {
   await api(`/api/neighborhoods/${id}`, { method: "DELETE" });
   state.selected = null;
@@ -815,7 +867,7 @@ async function deleteArea(id) {
 }
 
 async function saveHighlight(feature, geometry) {
-  const tags = [...document.querySelectorAll(".checkbox-grid input:checked")].map((input) => input.value);
+  const tags = [...document.querySelectorAll("#highlightTags input:checked")].map((input) => input.value);
   const payload = {
     name: document.getElementById("highlightName").value,
     highlight_type: document.getElementById("highlightType").value,
@@ -900,6 +952,10 @@ async function saveHomeFeedback(props) {
     },
   });
   await loadMapData();
+  const feature = (state.data.homes.features || []).find(
+    (item) => item.properties.listing_id === props.listing_id,
+  );
+  if (feature) renderHomeDetails(feature);
 }
 
 async function deleteHome(props) {
@@ -1263,14 +1319,100 @@ function defaultHighlightTags(type) {
   }[type] || [];
 }
 
+function renderProfileSelector() {
+  const select = document.getElementById("profileSelect");
+  if (!select) return;
+  const profiles = state.data?.profiles?.profiles || [];
+  const current = state.data?.profiles?.current_profile || profiles[0];
+  select.innerHTML = profiles
+    .map((profile) => `<option value="${profile.id}" ${profile.id === current?.id ? "selected" : ""}>${escapeHtml(profile.display_name)}</option>`)
+    .join("");
+  if (current?.id) {
+    state.currentProfileId = current.id;
+    localStorage.setItem("homeanalyzeProfileId", String(current.id));
+  }
+}
+
+async function switchProfile(event) {
+  const profileId = Number(event.target.value);
+  if (!profileId) return;
+  state.currentProfileId = profileId;
+  localStorage.setItem("homeanalyzeProfileId", String(profileId));
+  state.selected = null;
+  await loadMapData();
+}
+
+async function addProfile() {
+  const displayName = window.prompt("Profile name");
+  if (!displayName || !displayName.trim()) return;
+  const payload = await api("/api/profiles", {
+    method: "POST",
+    body: { display_name: displayName.trim() },
+  });
+  const current = payload.current_profile;
+  if (current?.id) {
+    state.currentProfileId = current.id;
+    localStorage.setItem("homeanalyzeProfileId", String(current.id));
+  }
+  state.selected = null;
+  await loadMapData();
+}
+
+function currentProfileLabel() {
+  const current = state.data?.profiles?.current_profile;
+  if (current?.display_name) return current.display_name;
+  const match = (state.data?.profiles?.profiles || []).find((profile) => profile.id === state.currentProfileId);
+  return match?.display_name || "Selected profile";
+}
+
+function profileBadgesHtml(items) {
+  const visible = (items || []).filter((item) => item.rating || item.notes).slice(0, 4);
+  if (!visible.length) return "";
+  return `<span class="profile-badges">${visible.map((item) => {
+    const profile = item.profile || {};
+    const label = `${profileInitial(profile.display_name)} ${item.rating || "note"}`;
+    const title = `${profile.display_name || "Profile"}: ${item.rating || "note"}`;
+    const color = profile.color || "#64706a";
+    return `<span class="profile-badge" title="${escapeHtml(title)}" style="--profile-color:${escapeHtml(color)}">${escapeHtml(label)}</span>`;
+  }).join("")}</span>`;
+}
+
+function profileFeedbackSummaryHtml(items) {
+  const visible = (items || []).filter((item) => item.rating || item.notes);
+  if (!visible.length) {
+    return `<div class="summary-box profile-summary"><h3>Household Responses</h3><p class="meta">No profile-specific ratings yet.</p></div>`;
+  }
+  return `<div class="summary-box profile-summary">
+    <h3>Household Responses</h3>
+    ${visible.map((item) => {
+      const profile = item.profile || {};
+      const color = profile.color || "#64706a";
+      return `<div class="profile-response-row" style="--profile-color:${escapeHtml(color)}">
+        <strong>${escapeHtml(profile.display_name || "Profile")}</strong>
+        <span>${escapeHtml(item.rating || "note")}</span>
+        ${item.notes ? `<p class="meta">${escapeHtml(item.notes)}</p>` : ""}
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function profileInitial(displayName) {
+  const clean = String(displayName || "?").trim();
+  return clean ? clean.slice(0, 1).toUpperCase() : "?";
+}
+
 function metric(label, value) {
   return `<div class="metric"><strong>${escapeHtml(value ?? "Unknown")}</strong><span>${escapeHtml(label)}</span></div>`;
 }
 
 async function api(path, options = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (state.currentProfileId) {
+    headers["X-HomeAnalyze-Profile-Id"] = String(state.currentProfileId);
+  }
   const response = await fetch(path, {
     method: options.method || "GET",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const payload = await response.json();
