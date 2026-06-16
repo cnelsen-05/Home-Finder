@@ -6,8 +6,8 @@ from realestate.db import normalize_database_url, reset_engine_cache
 from realestate.hosted_app import app
 
 
-def test_vercel_entrypoint_exports_hosted_app() -> None:
-    from api.index import app as vercel_app
+def test_vercel_root_entrypoint_exports_hosted_app() -> None:
+    from app import app as vercel_app
 
     assert vercel_app is app
 
