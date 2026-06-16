@@ -1,4 +1,4 @@
-# Real Estate Assistant
+# Home-Finder
 
 A local/private decision assistant for a Minneapolis / Twin Cities home search.
 It imports favorited homes, normalizes listing data into SQLite, scores each home
