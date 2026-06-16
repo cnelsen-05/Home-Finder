@@ -185,12 +185,18 @@ HOMEANALYZE_AUTH_SECRET=
 DATABASE_URL=<Vercel Marketplace Postgres URL>
 ```
 
+The hosted app will not use a fallback SQLite database on Vercel. If
+`DATABASE_URL` / `POSTGRES_URL` is missing, it returns a setup error instead of
+showing an empty workspace.
+
 Back up and migrate local data:
 
 ```powershell
 realestate db backup --output data/exports/database_backup_before_vercel.json
+realestate db status
 $env:DATABASE_URL = "<hosted postgres url>"
 realestate db migrate-sqlite --sqlite-path data/realestate.db --replace
+realestate db status
 ```
 
 Local hosted-app smoke test:

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from realestate.db import normalize_database_url, reset_engine_cache
+from realestate.db import (
+    HostedDatabaseNotConfigured,
+    database_url,
+    normalize_database_url,
+    reset_engine_cache,
+)
 from realestate.hosted_app import app
 
 
@@ -13,6 +18,8 @@ def test_vercel_root_entrypoint_exports_hosted_app() -> None:
 
 
 def test_hosted_app_requires_access_code_and_allows_api_after_login(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("VERCEL", raising=False)
+    monkeypatch.delenv("HOMEANALYZE_HOSTED", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("POSTGRES_URL", raising=False)
     monkeypatch.setenv("REAL_ESTATE_DB_PATH", str(tmp_path / "hosted.db"))
@@ -47,6 +54,36 @@ def test_hosted_app_requires_access_code_and_allows_api_after_login(monkeypatch,
     assert homes.status_code == 200
     assert homes.json() == {"type": "FeatureCollection", "features": []}
 
+    reset_engine_cache()
+
+
+def test_hosted_runtime_without_persistent_db_fails_loudly(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("HOMEANALYZE_ALLOW_EPHEMERAL_SQLITE", raising=False)
+    monkeypatch.delenv("HOMEANALYZE_ACCESS_CODE", raising=False)
+    monkeypatch.delenv("HOMEANALYZE_AUTH_SECRET", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("REAL_ESTATE_DB_PATH", str(tmp_path / "hosted.db"))
+    reset_engine_cache()
+    client = TestClient(app)
+
+    page = client.get("/")
+    api = client.get("/api/homes")
+    health = client.get("/health")
+
+    assert page.status_code == 503
+    assert "DATABASE_URL" in page.text
+    assert api.status_code == 503
+    assert api.json()["status"] == "misconfigured"
+    assert health.status_code == 503
+
+    try:
+        database_url()
+    except HostedDatabaseNotConfigured:
+        pass
+    else:
+        raise AssertionError("Hosted runtime should not fall back to SQLite without a DB URL")
     reset_engine_cache()
 
 

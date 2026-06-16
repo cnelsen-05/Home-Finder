@@ -13,7 +13,12 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from realestate.config import load_environment
-from realestate.db import session_scope
+from realestate.db import (
+    HostedDatabaseNotConfigured,
+    assert_hosted_database_configured,
+    database_mode,
+    session_scope,
+)
 from realestate.map_api import handle_api_request, parse_json_body, response_json
 from realestate.paths import IMPORTS_DIR, REPORTS_DIR
 
@@ -24,6 +29,24 @@ AUTH_TTL_SECONDS = 60 * 60 * 24 * 30
 
 app = FastAPI(title="HomeAnalyze Map Hub")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.exception_handler(HostedDatabaseNotConfigured)
+async def hosted_database_not_configured_handler(
+    request: Request,
+    exc: HostedDatabaseNotConfigured,
+) -> Response:
+    if request.url.path.startswith("/api/") or request.url.path == "/health":
+        return JSONResponse(
+            {
+                "status": "misconfigured",
+                "error": str(exc),
+                "required_env": ["DATABASE_URL or POSTGRES_URL"],
+                "recovery": "Set a persistent hosted Postgres URL and migrate local data.",
+            },
+            status_code=503,
+        )
+    return HTMLResponse(_database_setup_html(str(exc)), status_code=503)
 
 
 @app.middleware("http")
@@ -43,6 +66,7 @@ async def require_private_access(request: Request, call_next):
 
 @app.get("/", response_class=HTMLResponse)
 async def home() -> HTMLResponse:
+    assert_hosted_database_configured()
     return HTMLResponse((WEB_DIR / "map.html").read_text(encoding="utf-8"))
 
 
@@ -114,8 +138,9 @@ async def report_file(path: str = "") -> Response:
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, Any]:
+    assert_hosted_database_configured()
+    return {"status": "ok", "database": database_mode()}
 
 
 def _is_public_path(path: str) -> bool:
@@ -203,6 +228,26 @@ def _login_html(next_path: str, error: str | None) -> str:
       <input id="accessCode" name="access_code" class="text-input" type="password" autocomplete="current-password" autofocus>
       <button type="submit">Open Map</button>
     </form>
+  </main>
+</body>
+</html>"""
+
+
+def _database_setup_html(error: str) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeAnalyze Database Setup Required</title>
+  <link rel="stylesheet" href="/static/map.css">
+</head>
+<body class="login-page">
+  <main class="login-panel">
+    <h1>Database setup required</h1>
+    <p class="meta">{_escape_html(error)}</p>
+    <p class="meta">Set <code>DATABASE_URL</code> or <code>POSTGRES_URL</code> in Vercel, then migrate the local SQLite database before using the hosted map.</p>
+    <pre>realestate db migrate-sqlite --sqlite-path data/realestate.db --replace</pre>
   </main>
 </body>
 </html>"""

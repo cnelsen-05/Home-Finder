@@ -30,12 +30,24 @@ DATABASE_URL=<marketplace Postgres URL>
 `POSTGRES_URL` is also accepted if your Vercel Marketplace integration uses that
 name. Local development keeps using `REAL_ESTATE_DB_PATH`.
 
+Hosted deployments refuse to fall back to SQLite unless
+`HOMEANALYZE_ALLOW_EPHEMERAL_SQLITE=1` is set. Do not use that override for the
+shared family app; Vercel's runtime filesystem is not durable app storage and an
+empty SQLite fallback will look like lost homes, neighborhoods, and school
+layers.
+
 ## Database Migration
 
 Back up local data first:
 
 ```powershell
 realestate db backup --output data/exports/database_backup_before_vercel.json
+```
+
+Confirm the local source-of-truth counts:
+
+```powershell
+realestate db status
 ```
 
 After `DATABASE_URL` is available in your shell, clone local SQLite into hosted
@@ -46,8 +58,19 @@ $env:DATABASE_URL = "<hosted postgres url>"
 realestate db migrate-sqlite --sqlite-path data/realestate.db --replace
 ```
 
+If you only have a portable JSON backup available, restore that instead:
+
+```powershell
+realestate db restore --input data/exports/database_backup_before_vercel.json --replace
+```
+
 Use `--append` only when you know the target database is empty or can accept
 duplicate primary keys.
+
+Run `realestate db status` again with the hosted `DATABASE_URL` set. The hosted
+database should show nonzero counts for `favorites`, `listings`,
+`saved_neighborhoods`, and `school_attendance_zones` before relying on the
+deployed map.
 
 ## Local Hosted-App Smoke Test
 

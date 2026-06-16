@@ -8,7 +8,12 @@ from sqlalchemy import select
 
 from realestate.config import load_preferences
 from realestate.db import init_database, session_scope
-from realestate.db_transfer import backup_database_to_json, migrate_sqlite_to_database
+from realestate.db_transfer import (
+    backup_database_to_json,
+    database_status,
+    migrate_sqlite_to_database,
+    restore_database_from_json,
+)
 from realestate.enrichment.public_record_pipeline import (
     enrich_all_favorites,
     enrich_property,
@@ -113,6 +118,21 @@ def db_backup(
     typer.echo(f"Wrote database backup to {written}")
 
 
+@db_app.command("status")
+def db_status() -> None:
+    """Show database mode, persistence, and table counts."""
+
+    status = database_status()
+    database = status["database"]
+    typer.echo(f"Mode: {database['mode']}")
+    typer.echo(f"URL: {database['url']}")
+    typer.echo(f"Hosted runtime: {database['hosted']}")
+    typer.echo(f"Persistent: {database['persistent']}")
+    for table, count in status["counts"].items():
+        if count:
+            typer.echo(f"{table}: {count}")
+
+
 @db_app.command("migrate-sqlite")
 def db_migrate_sqlite(
     sqlite_path: Annotated[
@@ -131,6 +151,29 @@ def db_migrate_sqlite(
     counts = migrate_sqlite_to_database(sqlite_path, replace=replace)
     total = sum(counts.values())
     typer.echo(f"Migrated {total} rows across {len(counts)} tables.")
+    for table, count in counts.items():
+        if count:
+            typer.echo(f"{table}: {count}")
+
+
+@db_app.command("restore")
+def db_restore(
+    input_path: Annotated[
+        Path,
+        typer.Option("--input", help="Portable JSON backup created by `realestate db backup`."),
+    ],
+    replace: Annotated[
+        bool,
+        typer.Option("--replace/--append", help="Delete destination rows before restoring backup rows."),
+    ] = False,
+) -> None:
+    """Restore a portable JSON backup into the configured database."""
+
+    if not input_path.exists():
+        raise typer.BadParameter(f"Backup not found: {input_path}")
+    counts = restore_database_from_json(input_path, replace=replace)
+    total = sum(counts.values())
+    typer.echo(f"Restored {total} rows across {len(counts)} tables.")
     for table, count in counts.items():
         if count:
             typer.echo(f"{table}: {count}")

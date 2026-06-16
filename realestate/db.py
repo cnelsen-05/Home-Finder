@@ -18,6 +18,53 @@ _ENGINE_CACHE: dict[str, Engine] = {}
 _ENGINE_LOCK = Lock()
 
 
+class HostedDatabaseNotConfigured(RuntimeError):
+    """Raised when hosted runtime would otherwise fall back to ephemeral SQLite."""
+
+
+def configured_database_url() -> str | None:
+    load_environment()
+    configured = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
+    return configured.strip() if configured and configured.strip() else None
+
+
+def is_hosted_runtime() -> bool:
+    load_environment()
+    return _truthy(os.getenv("VERCEL")) or _truthy(os.getenv("HOMEANALYZE_HOSTED"))
+
+
+def allows_ephemeral_sqlite() -> bool:
+    load_environment()
+    return _truthy(os.getenv("HOMEANALYZE_ALLOW_EPHEMERAL_SQLITE"))
+
+
+def database_mode(db_path: Path | None = None, url: str | None = None) -> dict[str, str | bool]:
+    configured = url or configured_database_url()
+    hosted = is_hosted_runtime()
+    if configured:
+        normalized = normalize_database_url(configured)
+        return {
+            "mode": "postgres" if normalized.startswith("postgresql+") else "configured",
+            "url": _redact_url(normalized),
+            "hosted": hosted,
+            "persistent": True,
+        }
+    return {
+        "mode": "sqlite",
+        "url": str(db_path or get_db_path()),
+        "hosted": hosted,
+        "persistent": not hosted,
+    }
+
+
+def assert_hosted_database_configured() -> None:
+    if is_hosted_runtime() and not configured_database_url() and not allows_ephemeral_sqlite():
+        raise HostedDatabaseNotConfigured(
+            "Hosted deployment is missing DATABASE_URL or POSTGRES_URL. "
+            "Refusing to create an empty ephemeral SQLite database."
+        )
+
+
 def sqlite_url_for_path(db_path: Path | None = None) -> str:
     path = db_path or get_db_path()
     if not path.is_absolute():
@@ -29,10 +76,10 @@ def sqlite_url_for_path(db_path: Path | None = None) -> str:
 def database_url(db_path: Path | None = None) -> str:
     if db_path is not None:
         return sqlite_url_for_path(db_path)
-    load_environment()
-    configured = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
+    configured = configured_database_url()
     if configured:
         return normalize_database_url(configured)
+    assert_hosted_database_configured()
     return sqlite_url_for_path()
 
 
@@ -46,6 +93,17 @@ def normalize_database_url(url: str) -> str:
 
 def is_sqlite_url(url: str) -> bool:
     return url.startswith("sqlite:")
+
+
+def _truthy(value: str | None) -> bool:
+    return bool(value and value.strip().lower() in {"1", "true", "yes", "on"})
+
+
+def _redact_url(url: str) -> str:
+    if "@" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    return f"{scheme}://***@{rest.split('@', 1)[1]}"
 
 
 def make_engine(db_path: Path | None = None, url: str | None = None) -> Engine:
