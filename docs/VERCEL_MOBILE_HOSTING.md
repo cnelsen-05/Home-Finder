@@ -5,7 +5,9 @@ SQLite/map-server workflow.
 
 ## Hosted Architecture
 
-- `app.py` exposes the ASGI app Vercel expects.
+- `api/index.py` exposes the ASGI app Vercel expects for the serverless
+  function. Root `app.py` remains available for local `uvicorn app:app` smoke
+  tests.
 - `realestate.hosted_app` serves the map UI, static assets, auth, reports, and
   `/api/*` routes.
 - `realestate.map_api` remains the shared API implementation for local and

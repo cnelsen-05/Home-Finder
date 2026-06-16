@@ -6,6 +6,12 @@ from realestate.db import normalize_database_url, reset_engine_cache
 from realestate.hosted_app import app
 
 
+def test_vercel_entrypoint_exports_hosted_app() -> None:
+    from api.index import app as vercel_app
+
+    assert vercel_app is app
+
+
 def test_hosted_app_requires_access_code_and_allows_api_after_login(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("POSTGRES_URL", raising=False)

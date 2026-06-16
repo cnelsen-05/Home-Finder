@@ -3,11 +3,11 @@
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/app.py"
+      "destination": "/api/index"
     }
   ],
   "functions": {
-    "app.py": {
+    "api/index.py": {
       "excludeFiles": "{.git/**,.pytest_cache/**,.ruff_cache/**,.venv/**,tests/**,data/cache/**,data/exports/**,data/raw/**,data/reports/**,data/*.db,**/__pycache__/**}"
     }
   }

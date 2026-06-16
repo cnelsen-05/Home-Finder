@@ -174,8 +174,8 @@ realestate neighborhoods import data/exports/saved_neighborhoods.geojson
 ## Hosted Mobile App
 
 The same map hub can run as a private Vercel-hosted mobile app without a custom
-domain. The hosted entrypoint is `app.py`, and Vercel routing is configured in
-`vercel.json`.
+domain. The Vercel serverless entrypoint is `api/index.py`, local smoke tests
+can still use root `app.py`, and routing is configured in `vercel.json`.
 
 Before sharing a generated `*.vercel.app` link, configure:
 
