@@ -1,0 +1,152 @@
+# Favorite Homes Comparison
+
+Generated {{ today }}. This is private decision support, not an appraisal or
+brokerage recommendation.
+
+## Ranked List
+
+| Rank | Address | Overall | Quality | Value | Daily Life | Recommendation |
+|---:|---|---:|---:|---:|---:|---|
+{% for row in rows %}
+| {{ loop.index }} | {{ row.address }} | {{ row.score.overall_score|score }} | {{ row.score.quality_score|score }} | {{ row.score.value_score|score }} | {{ row.score.daily_life_score|score }} | {{ row.bucket|bucket_label }} |
+{% else %}
+| - | No homes imported yet. | - | - | - | - | - |
+{% endfor %}
+
+## Best Overall Fits
+
+{% for row in rows[:3] %}
+- {{ row.address }}: {{ row.summary }}
+{% else %}
+- Import favorites first.
+{% endfor %}
+
+## Best Value Plays
+
+{% for row in rows|sort(attribute="score.value_score", reverse=true) %}
+{% if loop.index <= 3 %}
+- {{ row.address }}: {{ row.score.value_score|score }}
+{% endif %}
+{% endfor %}
+
+## Best Daily Life Homes
+
+{% for row in rows|sort(attribute="score.daily_life_score", reverse=true) %}
+{% if loop.index <= 3 %}
+- {{ row.address }}: {{ row.score.daily_life_score|score }}
+{% endif %}
+{% endfor %}
+
+## Favorite Pocket Fit
+
+{% set favorite_pocket_rows = namespace(count=0) %}
+{% for row in rows %}
+{% set row_has_favorite = namespace(value=false) %}
+{% for match in row.neighborhood_matches if match.rating in ["favorite", "strong_like"] %}
+{% if not row_has_favorite.value %}
+- {{ row.address }}:
+{% set row_has_favorite.value = true %}
+{% set favorite_pocket_rows.count = favorite_pocket_rows.count + 1 %}
+{% endif %}
+  - {{ match.relation|replace("_", " ")|title }} {{ match.name }}{% if match.distance_miles is not none %} ({{ "%.2f"|format(match.distance_miles) }} mi){% endif %}
+{% endfor %}
+{% endfor %}
+{% if favorite_pocket_rows.count == 0 %}
+- No homes are currently inside or near a favorite/strong-like saved pocket.
+{% endif %}
+
+## Homes Outside Preferred Pockets
+
+{% for row in rows if not row.neighborhood_matches %}
+- {{ row.address }}: outside saved pockets or not matched yet; review map fit before prioritizing.
+{% else %}
+- Every currently ranked home has at least one saved-area relationship or no homes are imported.
+{% endfor %}
+
+## Liked / Avoided Highlight Conflicts
+
+{% set highlight_rows = namespace(count=0) %}
+{% for row in rows if row.highlight_matches %}
+- {{ row.address }}:
+{% set highlight_rows.count = highlight_rows.count + 1 %}
+{% for highlight in row.highlight_matches[:5] %}
+  - {{ highlight.sentiment|title }} {{ highlight.highlight_type|replace("_", " ") }}: {{ highlight.name }}{% if highlight.distance_miles is not none %} ({{ "%.2f"|format(highlight.distance_miles) }} mi){% endif %}
+{% endfor %}
+{% endfor %}
+{% if highlight_rows.count == 0 %}
+- No homes currently intersect liked/avoided highlight areas or streets.
+{% endif %}
+
+## Elementary School Context
+
+{% for row in rows %}
+{% if row.elementary_zone %}
+- {{ row.address }}: {{ row.elementary_zone.school_name or "Unknown zone" }}{% if row.elementary_zone.academic_profiles %}; {% for profile in row.elementary_zone.academic_profiles %}{{ profile.source_name }}{% if profile.state_rank %} #{{ profile.state_rank }}{% endif %}{% if profile.rating_label %} {{ profile.rating_label }}{% endif %}{% if profile.student_teacher_ratio %} {{ profile.student_teacher_ratio }}:1{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}{% else %}; no imported ranking/profile context yet{% endif %}. Verify assignment with district.
+{% endif %}
+{% else %}
+- No homes have imported elementary-zone context yet.
+{% endfor %}
+
+## Saved Neighborhood Pockets
+
+{% for row in neighborhood_rows %}
+- {{ row.neighborhood.name }}: fit {{ row.fit_score.overall_score|score }} ({{ row.fit_score.confidence }} confidence), {{ row.neighborhood.rating|replace("_", " ") }}; {{ row.homes_inside_count }} home(s) inside, {{ row.homes_nearby_count }} nearby, {{ row.zone_count }} elementary zone(s) intersecting. Notes: {{ row.neighborhood.notes or "None yet." }}
+{% else %}
+- No saved neighborhoods yet. Draw pockets on the map after touring.
+{% endfor %}
+
+## Highest Quality Homes
+
+{% for row in rows|sort(attribute="score.quality_score", reverse=true) %}
+{% if loop.index <= 3 %}
+- {{ row.address }}: {{ row.score.quality_score|score }}
+{% endif %}
+{% endfor %}
+
+## Highest Risk Homes
+
+{% for row in rows|sort(attribute="score.risk_score") %}
+{% if loop.index <= 3 %}
+- {{ row.address }}: risk/knownness {{ row.score.risk_score|score }}
+{% endif %}
+{% endfor %}
+
+## Best Questions to Ask Agent This Week
+
+{% for row in rows[:5] %}
+- {{ row.address }}:
+{% for item in row.source_highlights[:2] %}
+  - Source check: {{ item }}
+{% endfor %}
+{% for question in row.top_questions[:3] %}
+  - {{ question }}
+{% else %}
+  - Ask for disclosures, offer timing, mechanical ages, and comps.
+{% endfor %}
+{% else %}
+- Import favorites first.
+{% endfor %}
+
+## Homes to Tour First
+
+{% for row in rows if row.bucket in ["must_review", "strong_tour_candidate"] %}
+- {{ row.address }}
+{% else %}
+- No immediate tour candidates based on current facts.
+{% endfor %}
+
+## Homes to Watch
+
+{% for row in rows if row.bucket in ["watch", "worth_reviewing"] %}
+- {{ row.address }}
+{% else %}
+- No watch-list homes based on current facts.
+{% endfor %}
+
+## Homes to Drop
+
+{% for row in rows if row.bucket in ["low_priority", "likely_skip"] %}
+- {{ row.address }}
+{% else %}
+- No clear drop candidates based on current facts.
+{% endfor %}

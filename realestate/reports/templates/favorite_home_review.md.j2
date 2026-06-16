@@ -1,0 +1,282 @@
+# Favorite Home Review: {{ address }}
+
+This private report is decision support only. It is not an appraisal, legal advice,
+inspection advice, or a substitute for a licensed real-estate professional.
+
+## Executive Verdict
+
+{{ explanation.recommendation_summary }} Current bucket: **{{ bucket_label }}**. The
+score is based on imported listing facts, configured preferences, available public
+records, and explicitly marked unknowns.
+
+## Scorecard
+
+| Category | Score | Confidence | Summary |
+|---|---:|---|---|
+| Quality | {{ score.quality_score|score }} | {{ explanation.quality.confidence|title }} | {{ explanation.quality.positive_drivers[:1] | join("; ") or "Quality has limited positive evidence." }} |
+| Value | {{ score.value_score|score }} | {{ explanation.value.confidence|title }} | {{ explanation.value.positive_drivers[:1] | join("; ") or "Value needs more price/tax context." }} |
+| Daily Life | {{ score.daily_life_score|score }} | {{ explanation.daily_life.confidence|title }} | {{ explanation.daily_life.positive_drivers[:1] | join("; ") or "Daily-life fit needs more anchor data." }} |
+| Risk / Unknowns | {{ score.risk_score|score }} | {{ explanation.risk.confidence|title }} | Higher means fewer known unknowns. {{ explanation.risk.negative_drivers[:1] | join("; ") or "No major listing-language risk flags detected." }} |
+| Overall Fit | {{ score.overall_score|score }} | {{ explanation.overall.confidence|title }} | {{ bucket_label }} |
+
+## Critical Read
+
+{% if latest_sale_read %}
+{% if latest_sale_read.is_stale %}
+- Price versus public sale history: latest parcel-reported sale was {{ latest_sale_read.sale_price|money }}{% if latest_sale_read.sale_date %} on {{ latest_sale_read.sale_date }}{% endif %}{% if latest_sale_read.age_years is not none %} ({{ latest_sale_read.age_years }} years old){% endif %}. Treat it as ownership history and ask what updates/comps justify the current {{ listing.list_price|money }} price.
+{% else %}
+- Price versus public sale history: current listing price {{ listing.list_price|money }} is {{ latest_sale_read.abs_delta|money }} {{ latest_sale_read.direction }} the latest parcel-reported sale of {{ latest_sale_read.sale_price|money }}{% if latest_sale_read.sale_date %} on {{ latest_sale_read.sale_date }}{% endif %}. Treat this as a negotiation/comps question, not an appraisal.
+{% endif %}
+{% endif %}
+{% if latest_tax_record and latest_tax_record.assessed_market_value and listing.list_price %}
+{% set emv_delta = listing.list_price - latest_tax_record.assessed_market_value %}
+- Price versus public EMV: listing price is {{ emv_delta|abs|money }} {{ "above" if emv_delta > 0 else "below" }} public EMV of {{ latest_tax_record.assessed_market_value|money }}; verify market comps and condition justify the gap.
+{% endif %}
+{% for commute in commute_estimates if commute.anchor_category == "work" %}
+- Work-anchor commute: {{ commute.duration_minutes }} min / {{ commute.distance_miles }} mi by {{ commute.source_name }}{% if commute.time_of_day %} ({{ commute.time_of_day }}){% endif %}; verify during actual commute windows.
+{% else %}
+- Work-anchor commute is not routed yet; this should be filled before deciding whether the home works for weekday life.
+{% endfor %}
+{% if montessori_options %}
+- Montessori/daycare signal: nearest Montessori-tagged option found is {{ montessori_options[0].amenity_name }}{% if montessori_options[0].distance_miles is not none %} at {{ "%.1f"|format(montessori_options[0].distance_miles) }} mi{% endif %}; verify licensing, availability, hours, and route.
+{% elif childcare_options %}
+- Childcare signal: nearby childcare/school options were found, but no Montessori-tagged option was found in OSM; run a direct daycare search before relying on fit.
+{% else %}
+- Childcare signal: no nearby daycare/Montessori option was found in stored amenity data; this is a research gap.
+{% endif %}
+{% for item in explanation.risk.negative_drivers[:3] + explanation.value.negative_drivers[:2] %}
+- Diligence flag: {{ item }}
+{% endfor %}
+
+## Maintenance / Roof Read
+
+{% if maintenance_context %}
+- Roof signal: {{ maintenance_context.roof_summary or "Roof age not found in accessible listing/public records." }}
+{% if maintenance_context.roof_replacement_year %}
+- Reported roof replacement year: {{ maintenance_context.roof_replacement_year }}; verify permit, invoice, warranty transfer, and insurance-claim history.
+{% else %}
+- Reported roof replacement year: Unknown; ask for seller disclosure, permits, paid invoice, and transferable warranty.
+{% endif %}
+{% for item in maintenance_context.maintenance_flags or [] %}
+- Maintenance watchout: {{ item }}
+{% endfor %}
+{% if maintenance_context.permit_lookup_note %}
+- Permit lookup: {{ maintenance_context.permit_lookup_note }}
+{% endif %}
+{% else %}
+- Roof/maintenance context has not been populated yet.
+{% endif %}
+{% if storm_context %}
+- Storm screen: NOAA records show {{ storm_context.severe_event_count_2024_2025 }} county-level hail/wind/tornado event(s) in {{ storm_context.county }} during 2024-2025; this does not prove property damage but raises roof, gutter, tree, and insurance-claim diligence.
+{% endif %}
+
+## Market / Community Context
+
+{% if market_context %}
+- ZIP market trend: {{ market_context.market_label }}; Zillow ZHVI {{ market_context.latest_month }} {{ market_context.latest_zhvi|money }}, {{ market_context.zhvi_3m_change_pct }}% over 3 months and {{ market_context.zhvi_12m_change_pct }}% over 12 months.
+{% else %}
+- ZIP market trend has not been populated yet.
+{% endif %}
+{% if community_context %}
+- ACS community context: tract {{ community_context.tract_geoid }} has population {{ community_context.population|round|int }}, median household income {{ community_context.median_household_income|money }}, median owner-occupied home value {{ community_context.median_home_value|money }}, {{ community_context.owner_occupied_pct }}% owner-occupied housing, and {{ community_context.housing_built_1979_or_earlier_pct }}% housing built 1979 or earlier.
+{% else %}
+- ACS community context has not been populated yet. Protected-class demographic fields are intentionally excluded from scoring.
+{% endif %}
+
+## Why This May Fit Us
+
+{% for item in explanation.daily_life.positive_drivers + explanation.quality.positive_drivers + explanation.preference.positive_drivers %}
+- {{ item }}
+{% else %}
+- No strong fit drivers are available yet; add more listing facts, anchors, or notes.
+{% endfor %}
+
+## What We May Be Missing
+
+{% for item in explanation.overall.missing_data %}
+- {{ item }}
+{% else %}
+- No major missing fields were detected from the imported data.
+{% endfor %}
+
+## Quality / Inspection Watchouts
+
+{% for item in explanation.quality.negative_drivers + explanation.risk.negative_drivers %}
+- Verify: {{ item }}
+{% else %}
+- Verify roof age, furnace/AC age, water heater age, electrical/plumbing updates, basement moisture history, grading, gutters, sewer line, and disclosures.
+{% endfor %}
+
+## Value Analysis
+
+- Price: {{ listing.list_price|money }}
+- Price per finished sqft: {{ price_per_sqft|money if price_per_sqft else "Unknown until listing price and reliable finished sqft are known" }}
+- Garage spaces: {{ listing.garage_spaces|round|int if listing.garage_spaces else "Unknown" }}
+- Annual taxes: {{ listing.annual_taxes|money }}
+- Parcel ID: {{ property.parcel_id or "Unknown" }}
+- Public lot size: {{ (latest_parcel_record.lot_size_sqft|round|int)|string ~ " sq ft" if latest_parcel_record and latest_parcel_record.lot_size_sqft else "Unknown" }}
+- Assessed / estimated market value: {{ latest_tax_record.assessed_market_value|money if latest_tax_record and latest_tax_record.assessed_market_value else "Unknown" }}
+- Homestead status: {{ latest_tax_record.homestead_status if latest_tax_record and latest_tax_record.homestead_status else "Unknown" }}
+- Year built from public records/listing: {{ listing.year_built or "Unknown" }}
+- School district code: {{ listing.school_district or "Unknown; verify boundary before relying on it" }}
+- Sale history:
+{% for sale in sale_history_records %}
+  - {{ sale.sale_date or "Unknown date" }}: {{ sale.sale_price|money }} via {{ sale.source_name or "public record" }} ({{ sale.confidence }})
+{% else %}
+  - Unknown unless a public record source provides sale/date details.
+{% endfor %}
+- Price history: {{ "Original list price " ~ (listing.original_list_price|money) if listing.original_list_price else "Unknown or not yet observed." }}
+- Decision-support value read: {{ explanation.value.positive_drivers[:2] | join("; ") or "Insufficient positive value evidence." }} {{ explanation.value.negative_drivers[:2] | join("; ") }}
+
+This is not an appraisal. Use it to decide what to ask, tour, watch, or skip.
+
+## Map / Neighborhood Fit
+
+{% if neighborhood_matches %}
+{% for match in neighborhood_matches %}
+- {{ match.relation|replace("_", " ")|title }} saved area: {{ match.name }}{% if match.distance_miles is not none %} ({{ "%.2f"|format(match.distance_miles) }} mi){% endif %}. Area rating: {{ match.rating|replace("_", " ") }}. User note: {{ match.notes or "None yet." }}
+{% endfor %}
+{% else %}
+- No saved-neighborhood match is stored yet. Run `realestate match-homes-to-neighborhoods` after homes and saved areas have map coordinates.
+{% endif %}
+
+{% if highlight_matches %}
+- Tour map highlights near this home:
+{% for highlight in highlight_matches %}
+  - {{ highlight.sentiment|title }} {{ highlight.highlight_type|replace("_", " ") }}: {{ highlight.name }}{% if highlight.distance_miles is not none %} ({{ "%.2f"|format(highlight.distance_miles) }} mi){% endif %}. Notes: {{ highlight.notes or "None yet." }}
+{% endfor %}
+{% else %}
+- No liked/avoided street or pocket highlights are linked to this home yet.
+{% endif %}
+
+{% if elementary_zone %}
+- Likely elementary attendance zone: {{ elementary_zone.school_name or "Unknown" }}{% if elementary_zone.district_name %}, {{ elementary_zone.district_name }}{% endif %}{% if elementary_zone.school_year %} ({{ elementary_zone.school_year }}){% endif %}.
+- Source: {{ elementary_zone.source_name or "Unknown" }}{% if elementary_zone.source_url %} - {{ elementary_zone.source_url }}{% endif %}. Confidence: {{ elementary_zone.confidence|title }}.
+- School location: {% if elementary_zone.school_location %}{{ elementary_zone.school_location.name }}{% if elementary_zone.school_location.address %}, {{ elementary_zone.school_location.address }}{% endif %} via {{ elementary_zone.school_location.source_name }}{% else %}not imported/matched yet{% endif %}.
+{% if elementary_zone.academic_profiles %}
+- School academic/ranking context:
+{% for profile in elementary_zone.academic_profiles %}
+  - {{ profile.source_name }}{% if profile.state_rank %}: #{{ profile.state_rank }} in Minnesota public elementary context{% endif %}{% if profile.rating_label %}; rating {{ profile.rating_label }}{% endif %}{% if profile.student_teacher_ratio %}; student-teacher ratio {{ profile.student_teacher_ratio }}:1{% endif %}. Confidence: {{ profile.confidence|title }}. Source: {{ profile.source_url or "not captured" }}. Verify at source.
+{% endfor %}
+{% else %}
+- School academic/ranking context has not been imported yet. Niche, U.S. News, and official school facts should be source-labeled and verified before relying.
+{% endif %}
+- Verification warning: {{ elementary_zone.warning or "Verify school assignment directly with the district before relying." }}
+{% else %}
+- Elementary attendance zone is not available yet. Import current attendance areas and verify directly with the district before relying on assignment.
+{% endif %}
+
+## Daily Life Analysis
+
+{% for item in explanation.daily_life.positive_drivers + explanation.daily_life.negative_drivers %}
+- {{ item }}
+{% else %}
+- Add geocoded life anchors or a routing API to estimate commute friction.
+{% endfor %}
+{% if commute_estimates %}
+- Routed commute estimates:
+{% for commute in commute_estimates %}
+  - {{ commute.anchor_name }}: {{ commute.duration_minutes }} min, {{ commute.distance_miles }} mi via {{ commute.source_name }}{% if commute.time_of_day %} ({{ commute.time_of_day }}){% endif %}{{ "\n" -}}
+{% endfor %}
+{% endif %}
+{% if montessori_options %}
+- Montessori-priority options:
+{% for amenity in montessori_options[:5] %}
+  - {{ amenity.amenity_name }}{% if amenity.distance_miles is not none %} ({{ "%.1f"|format(amenity.distance_miles) }} mi){% endif %}{{ "\n" -}}
+{% endfor %}
+{% elif childcare_options %}
+- Nearby childcare/school options:
+{% for amenity in childcare_options[:5] %}
+  - {{ amenity.amenity_name }}{% if amenity.distance_miles is not none %} ({{ "%.1f"|format(amenity.distance_miles) }} mi){% endif %}{{ "\n" -}}
+{% endfor %}
+{% endif %}
+{% if amenity_distances %}
+- Nearby amenity facts:
+{% for amenity in amenity_distances[:8] %}
+  - {{ amenity.amenity_type|title }}: {{ amenity.amenity_name or "Unnamed" }}{{ " (" ~ "%.1f"|format(amenity.distance_miles) ~ " mi)" if amenity.distance_miles is not none else "" }}{{ "\n" -}}
+{% endfor %}
+{% endif %}
+- Winter practicality: verify garage access, driveway slope, snow storage, alley/plowing setup, walkways, and mudroom or entry storage.
+- Yard usability: verify shape, slope, drainage, fencing, privacy, and how the lot actually lives.
+- Layout considerations: verify bedroom placement, laundry location, storage, stairs, basement ceiling height, and kid-room practicality.
+
+## Source-Backed Intelligence
+
+{% for item in source_highlights %}
+- {{ item }}
+{% else %}
+- No source-backed public/GIS highlights are available yet.
+{% endfor %}
+
+## Public Records Found
+
+| Source | Data Found | Last Retrieved | Confidence |
+|---|---|---|---|
+{% for record in public_records %}
+| {{ record.source_name }}{% if record.source_url %} ([source]({{ record.source_url }})){% endif %} | {{ record.record_type }}{% if record.notes %}: {{ record.notes }}{% endif %} | {{ record.retrieved_at }} | {{ record.confidence|title }} |
+{% else %}
+| None yet | Public-record enrichment has not found/imported records. | Unknown | Low |
+{% endfor %}
+
+{% if latest_parcel_record or latest_tax_record %}
+## Public Record Snapshot
+
+{% if latest_parcel_record %}
+- Parcel: {{ latest_parcel_record.parcel_id or property.parcel_id or "Unknown" }}
+- Municipality/source area: {{ latest_parcel_record.municipality or "Unknown" }}
+- Land use: {{ latest_parcel_record.land_use or "Unknown" }}
+- Lot size: {{ (latest_parcel_record.lot_size_sqft|round|int)|string ~ " sq ft" if latest_parcel_record.lot_size_sqft else "Unknown" }}
+{% endif %}
+{% if latest_tax_record %}
+- Annual tax: {{ latest_tax_record.annual_tax|money }}
+- Estimated market value: {{ latest_tax_record.assessed_market_value|money }}
+- Homestead: {{ latest_tax_record.homestead_status or "Unknown" }}
+{% endif %}
+{% endif %}
+
+## Missing Information
+
+{% for item in explanation.overall.missing_data %}
+- {{ item }}
+{% else %}
+- Ask for disclosures, utility/mechanical ages, permits, sewer scope, and public tax/parcel confirmations.
+{% endfor %}
+
+## Questions for Buyer Agent
+
+- Is there an offer deadline?
+- Is there any seller motivation or timing constraint?
+- Are there known inspection issues or pre-inspection documents?
+- What are the ages of the roof, furnace, AC, water heater, windows, and major appliances?
+- Has the sewer line been scoped recently?
+- Is there any water intrusion, seepage, drain tile, sump pump, or grading history?
+- Are disclosures available, and do they mention insurance claims, permits, easements, or zoning issues?
+- Is there road noise, alley access, train/freeway exposure, shared driveway, or parking friction?
+- Is a home-sale contingency realistic for this property?
+- What comparable sales justify the asking price?
+{% for question in issue_flags[:5] %}
+- {{ question.description }}
+{% endfor %}
+
+## Tour Checklist
+
+- Listen outside and inside for road, freeway, aircraft, train, and neighbor noise.
+- Check basement smell, floor/wall stains, dehumidifier use, sump, drain tile, grading, downspouts, and ceiling height.
+- Inspect driveway slope, snow storage, garage width/depth, alley access, and daily entry path.
+- Verify mudroom/drop-zone space, stroller/kid gear storage, pantry, linen closets, and seasonal storage.
+- Check bedroom layout for young kids, stairs, bath proximity, laundry location, and nighttime noise.
+- Look behind cosmetic updates for electrical panel, plumbing, HVAC, foundation, windows, and roof clues.
+- Walk the yard for slope, drainage, usable play area, privacy, mature-tree maintenance, and fence condition.
+- Confirm school district/boundary facts independently before relying on them.
+
+## Negotiation Angle
+
+{% for item in explanation.value.positive_drivers + explanation.value.negative_drivers %}
+- {{ item }}
+{% else %}
+- Negotiation leverage is unclear without days-on-market, price history, disclosures, competing listings, and public records.
+{% endfor %}
+
+## Final Recommendation
+
+**{{ final_recommendation }}**

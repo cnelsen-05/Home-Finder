@@ -1,0 +1,41 @@
+# Daily Real Estate Brief - {{ today }}
+
+## New Favorite/Tracked Home Updates
+
+{% for row in rows %}
+- {{ row.address }}: {{ row.bucket|bucket_label }}, overall {{ row.score.overall_score|score }}.
+{% else %}
+- No tracked homes yet.
+{% endfor %}
+
+## Price Reductions
+
+- Price-change detection is available through listing snapshots. Re-import favorite CSVs or listing exports to record changes.
+
+## Open Houses
+
+- Open-house import is not configured yet. Add user-provided listing exports or emails when available.
+
+## Public Record Updates
+
+- Public-record adapters are conservative and disabled unless configured or manually imported.
+
+## Homes That Became More Interesting
+
+{% for row in rows[:3] %}
+- {{ row.address }}: {{ row.summary }}
+{% else %}
+- None yet.
+{% endfor %}
+
+## Homes That Became Less Interesting
+
+{% for row in rows|sort(attribute="score.risk_score") %}
+{% if loop.index <= 3 %}- {{ row.address }}: risk/knownness {{ row.score.risk_score|score }}{% endif %}
+{% endfor %}
+
+## Best Actions Today
+
+- Ask targeted questions for homes marked Agent Question First.
+- Tour only homes where daily-life fit and quality evidence justify the time.
+- Re-import updated favorite/listing exports to capture price and status changes.

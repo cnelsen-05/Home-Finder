@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pilot Analysis - First {{ rows|length }} Liked Homes</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #5b6773;
+      --line: #d7dee8;
+      --paper: #f7f9fc;
+      --panel: #ffffff;
+      --accent: #215a88;
+      --good: #276749;
+      --warn: #8a4b0f;
+      --bad: #8f2d2d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.45;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+    }
+    header {
+      border-bottom: 2px solid var(--line);
+      margin-bottom: 22px;
+      padding-bottom: 16px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 6px;
+      letter-spacing: 0;
+    }
+    h2 {
+      font-size: 19px;
+      margin: 26px 0 10px;
+      letter-spacing: 0;
+    }
+    h3 {
+      font-size: 17px;
+      margin: 0 0 10px;
+      letter-spacing: 0;
+    }
+    p, li, td, th {
+      font-size: 14px;
+    }
+    .muted { color: var(--muted); }
+    .notice {
+      background: #eef5fb;
+      border: 1px solid #c9dceb;
+      border-left: 5px solid var(--accent);
+      padding: 14px 16px;
+      margin: 14px 0 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #edf2f7;
+      font-weight: 650;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .score {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .bucket {
+      display: inline-block;
+      border-radius: 4px;
+      background: #fff6df;
+      color: var(--warn);
+      border: 1px solid #ecd49c;
+      padding: 2px 7px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-top: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .fact {
+      border: 1px solid var(--line);
+      background: #fbfdff;
+      border-radius: 6px;
+      padding: 8px 10px;
+      min-height: 58px;
+    }
+    .fact span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    .fact strong {
+      font-size: 14px;
+    }
+    ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    .section-band {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 14px 16px;
+      margin-top: 14px;
+    }
+    @media (max-width: 680px) {
+      main { padding: 18px 12px 36px; }
+      h1 { font-size: 24px; }
+      .facts { grid-template-columns: 1fr; }
+      th, td { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Pilot Analysis - First {{ rows|length }} Liked Homes</h1>
+    <div class="muted">Generated {{ today }} from address intake, public/GIS enrichment, and recent listing discovery where available.</div>
+  </header>
+
+  <section class="notice">
+    <strong>Bottom line:</strong>
+    These are now more than address-only candidates: public geocode, parcel/tax facts, GIS risk screens, amenities, and
+    recent listing-discovery facts were found where available. Verify direct MLS/broker facts, photos, disclosures, and
+    traffic-aware commute details before relying on a final tour or offer decision.
+  </section>
+
+  <h2>Quick Ranking</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Home</th>
+        <th>Bucket</th>
+        <th>Overall</th>
+        <th>Known Public Facts</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set parcel = row.latest_parcel_record %}
+      {% set tax = row.latest_tax_record %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ row.address }}</td>
+        <td><span class="bucket">{{ row.bucket|bucket_label }}</span></td>
+        <td class="score">{{ row.score.overall_score|score }}</td>
+        <td>
+          {% if parcel %}Lot {{ parcel.lot_size_sqft|round|int }} sq ft{% else %}Lot unknown{% endif %};
+          {% if tax %}tax {{ tax.annual_tax|money }}, EMV {{ tax.assessed_market_value|money }}{% else %}tax/EMV unknown{% endif %};
+          {% if row.listing.year_built %}built {{ row.listing.year_built }}{% else %}year unknown{% endif %}.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Per-Home Read</h2>
+  <section class="cards">
+    {% for row in rows %}
+    {% set parcel = row.latest_parcel_record %}
+    {% set tax = row.latest_tax_record %}
+    <article class="card">
+      <h3>{{ loop.index }}. {{ row.address }}</h3>
+      <p><strong>Current read:</strong> {{ row.summary }}</p>
+      <div class="facts">
+        <div class="fact"><span>Score</span><strong>{{ row.score.overall_score|score }}</strong></div>
+        <div class="fact"><span>Parcel</span><strong>{{ row.property.parcel_id or "Unknown" }}</strong></div>
+        <div class="fact"><span>County / Municipality</span><strong>{{ row.property.county or "Unknown" }}{% if parcel and parcel.municipality %} / {{ parcel.municipality }}{% endif %}</strong></div>
+        <div class="fact"><span>Lot Size</span><strong>{% if parcel and parcel.lot_size_sqft %}{{ parcel.lot_size_sqft|round|int }} sq ft{% else %}Unknown{% endif %}</strong></div>
+        <div class="fact"><span>Annual Tax</span><strong>{% if tax %}{{ tax.annual_tax|money }}{% else %}Unknown{% endif %}</strong></div>
+        <div class="fact"><span>Estimated Market Value</span><strong>{% if tax %}{{ tax.assessed_market_value|money }}{% else %}Unknown{% endif %}</strong></div>
+        <div class="fact"><span>Year Built</span><strong>{{ row.listing.year_built or "Unknown" }}</strong></div>
+        <div class="fact"><span>Finished Sqft</span><strong>{% if row.listing.finished_sqft %}{{ row.listing.finished_sqft|round|int }}{% else %}Unknown{% endif %}</strong></div>
+        <div class="fact"><span>Price / Finished Sqft</span><strong>{% if row.price_per_sqft %}{{ row.price_per_sqft|money }}{% else %}Unknown{% endif %}</strong></div>
+        <div class="fact"><span>Garage Spaces</span><strong>{% if row.listing.garage_spaces %}{{ row.listing.garage_spaces|round|int }}{% else %}Unknown{% endif %}</strong></div>
+      </div>
+
+      <strong>Still Missing</strong>
+      <ul>
+        {% for missing in row.top_missing %}
+        <li>{{ missing }}</li>
+        {% else %}
+        <li>No major missing fields detected; verify listing and disclosures.</li>
+        {% endfor %}
+      </ul>
+
+      <strong>Source-Backed Checks</strong>
+      <ul>
+        {% for item in row.source_highlights[:6] %}
+        <li>{{ item }}</li>
+        {% else %}
+        <li>No additional public/GIS source highlights yet.</li>
+        {% endfor %}
+        {% for source in row.source_links[:6] %}
+        <li><a href="{{ source.source_url }}">{{ source.source_name }} - {{ source.record_type }}</a> ({{ source.confidence }})</li>
+        {% endfor %}
+      </ul>
+
+      <strong>Nearby Amenities</strong>
+      <ul>
+        {% for amenity in row.amenity_distances[:5] %}
+        <li>{{ amenity.amenity_type|title }}: {{ amenity.amenity_name or "Unnamed" }}{% if amenity.distance_miles is not none %} ({{ "%.1f"|format(amenity.distance_miles) }} mi){% endif %}</li>
+        {% else %}
+        <li>No nearby OSM amenities stored yet.</li>
+        {% endfor %}
+      </ul>
+
+      <strong>Maintenance / Roof Read</strong>
+      <ul>
+        {% if row.maintenance_context %}
+        <li>Roof signal: {{ row.maintenance_context.roof_summary or "Roof age not found in accessible listing/public records." }}</li>
+        {% if row.maintenance_context.roof_replacement_year %}
+        <li>Reported roof replacement year: {{ row.maintenance_context.roof_replacement_year }}; verify permit, invoice, warranty transfer, and insurance-claim history.</li>
+        {% else %}
+        <li>Reported roof replacement year: unknown; ask for seller disclosure, permits, paid invoice, and transferable warranty.</li>
+        {% endif %}
+        {% for item in row.maintenance_context.maintenance_flags or [] %}
+        <li>{{ item }}</li>
+        {% endfor %}
+        {% if row.maintenance_context.permit_lookup_note %}
+        <li>Permit lookup: {{ row.maintenance_context.permit_lookup_note }}</li>
+        {% endif %}
+        {% else %}
+        <li>Roof/maintenance context has not been populated yet.</li>
+        {% endif %}
+        {% if row.storm_context %}
+        <li>NOAA storm screen: {{ row.storm_context.severe_event_count_2024_2025 }} county-level hail/wind/tornado event(s) in {{ row.storm_context.county }} during 2024-2025; verify roof, gutters, trees, and insurance-claim history.</li>
+        {% endif %}
+      </ul>
+
+      <strong>Critical Read</strong>
+      <ul>
+        {% if row.latest_sale_read %}
+        {% if row.latest_sale_read.is_stale %}
+        <li>Latest parcel-reported sale was {{ row.latest_sale_read.sale_price|money }}{% if row.latest_sale_read.sale_date %} from {{ row.latest_sale_read.sale_date }}{% endif %}{% if row.latest_sale_read.age_years is not none %} ({{ row.latest_sale_read.age_years }} years old){% endif %}; use it as ownership history and ask what updates/comps justify {{ row.listing.list_price|money }}.</li>
+        {% else %}
+        <li>Listing price {{ row.listing.list_price|money }} is {{ row.latest_sale_read.abs_delta|money }} {{ row.latest_sale_read.direction }} latest parcel-reported sale {{ row.latest_sale_read.sale_price|money }}{% if row.latest_sale_read.sale_date %} from {{ row.latest_sale_read.sale_date }}{% endif %}; verify comps and condition.</li>
+        {% endif %}
+        {% endif %}
+        {% for commute in row.commute_estimates if commute.anchor_category == "work" %}
+        <li>Work-anchor commute: {{ commute.duration_minutes }} min / {{ commute.distance_miles }} mi via {{ commute.source_name }}; verify in rush-hour.</li>
+        {% else %}
+        <li>Work-anchor commute is still missing.</li>
+        {% endfor %}
+        {% if row.montessori_options %}
+        <li>Nearest Montessori-tagged option: {{ row.montessori_options[0].amenity_name }}{% if row.montessori_options[0].distance_miles is not none %} ({{ "%.1f"|format(row.montessori_options[0].distance_miles) }} mi){% endif %}.</li>
+        {% elif row.childcare_options %}
+        <li>Childcare/school options exist, but no Montessori-tagged option was found in OSM.</li>
+        {% else %}
+        <li>No childcare/Montessori option is currently stored.</li>
+        {% endif %}
+        {% for item in row.explanation.risk.negative_drivers[:2] + row.explanation.value.negative_drivers[:1] %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+
+      <strong>Market / Community Context</strong>
+      <ul>
+        {% if row.market_context %}
+        <li>ZIP market trend: {{ row.market_context.market_label }}; Zillow ZHVI {{ row.market_context.latest_month }} {{ row.market_context.latest_zhvi|money }}, {{ row.market_context.zhvi_3m_change_pct }}% over 3 months and {{ row.market_context.zhvi_12m_change_pct }}% over 12 months.</li>
+        {% else %}
+        <li>ZIP market trend has not been populated yet.</li>
+        {% endif %}
+        {% if row.community_context %}
+        <li>ACS community context: tract {{ row.community_context.tract_geoid }} has population {{ row.community_context.population|round|int }}, median household income {{ row.community_context.median_household_income|money }}, median owner-occupied home value {{ row.community_context.median_home_value|money }}, {{ row.community_context.owner_occupied_pct }}% owner-occupied housing, and {{ row.community_context.housing_built_1979_or_earlier_pct }}% housing built 1979 or earlier.</li>
+        {% else %}
+        <li>ACS community context has not been populated yet. Protected-class demographic fields are intentionally excluded from scoring.</li>
+        {% endif %}
+      </ul>
+
+      <strong>Best Next Questions</strong>
+      <ul>
+        {% for question in row.top_questions[:4] %}
+        <li>{{ question }}</li>
+        {% else %}
+        <li>Ask for listing URL, seller disclosures, mechanical ages, garage spaces, and current price.</li>
+        {% endfor %}
+        <li>Is the street quiet in practice, or is there road/freeway/train noise?</li>
+        <li>Which Life Time and Montessori/daycare options are practical relative to home and the configured work anchor?</li>
+      </ul>
+    </article>
+    {% endfor %}
+  </section>
+
+  <section class="section-band">
+    <h2>Data Needed For The Next Pass</h2>
+    <ul>
+      <li>Listing URL or export with current price, beds, baths, garage spaces, status, description, and photos.</li>
+      <li>Listing text/photos to review condition, basement, mechanical, garage, and road-noise clues.</li>
+      <li>Routing/amenity providers or local GIS sources for Life Time, Montessori/daycare, parks, trails, and commute estimates.</li>
+      <li>Additional public records where available for sale history, permits, flood zone, school-boundary verification, and tax details.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

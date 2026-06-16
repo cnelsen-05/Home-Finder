@@ -1,0 +1,182 @@
+# Pilot Analysis - First {{ rows|length }} Liked Homes
+
+Generated {{ today }} from address intake, public/GIS records, and recent listing
+discovery where available. This is still a diligence triage pass, not an
+appraisal or brokerage recommendation.
+
+## Bottom Line
+
+These homes now combine address-first public records with recent listing
+discovery where accessible. Listing facts from web discovery should be verified
+against the direct MLS/broker page and disclosures before touring or offering.
+Photos, condition, offer timing, disclosures, and traffic-aware routing still
+need follow-up before any final buy/pass decision.
+
+## Quick Ranking
+
+| Rank | Home | Current Bucket | Overall | What This Means Now |
+|---:|---|---|---:|---|
+{% for row in rows %}
+| {{ loop.index }} | {{ row.address }} | {{ row.bucket|bucket_label }} | {{ row.score.overall_score|score }} | {% if row.listing.list_price %}Recent listing discovery added; verify direct MLS/broker facts and disclosures.{% else %}Address retained; needs listing facts before a meaningful tour/watch/skip call.{% endif %} |
+{% else %}
+| - | No pilot homes found. | - | - | Import homes first. |
+{% endfor %}
+
+## Per-Home Read
+
+{% for row in rows %}
+### {{ loop.index }}. {{ row.address }}
+
+**Current read:** {{ row.summary }}
+
+**Known now**
+
+- User signal: liked.
+- City/ZIP captured: {{ row.property.city or "Unknown" }}, {{ row.property.zip or "Unknown" }}.
+- County hint: {{ row.property.county or "Unknown until public records/geocoding confirm it" }}.
+- Geocode: {{ "found" if row.property.latitude and row.property.longitude else "not found" }}.
+{% set parcel = row.latest_parcel_record %}
+{% set tax = row.latest_tax_record %}
+{% if parcel %}
+- Parcel ID: {{ parcel.parcel_id or row.property.parcel_id }}.
+- Public lot size: {{ (parcel.lot_size_sqft|round|int)|string ~ " sq ft" if parcel.lot_size_sqft else "Unknown" }}.
+- Municipality/source area: {{ parcel.municipality or "Unknown" }}.
+{% endif %}
+{% if tax %}
+- Annual tax: {{ tax.annual_tax|money }}.
+- Estimated market value: {{ tax.assessed_market_value|money }}.
+- Homestead: {{ tax.homestead_status or "Unknown" }}.
+{% endif %}
+{% if row.listing.year_built %}
+- Year built: {{ row.listing.year_built }}.
+{% endif %}
+{% if row.listing.finished_sqft %}
+- Finished sqft: {{ row.listing.finished_sqft|round|int }}.
+{% endif %}
+{% if row.price_per_sqft %}
+- Price per finished sqft: {{ row.price_per_sqft|money }}.
+{% endif %}
+{% if row.listing.garage_spaces %}
+- Garage spaces: {{ row.listing.garage_spaces|round|int }}.
+{% else %}
+- Garage spaces: Unknown from current listing discovery.
+{% endif %}
+{% if row.listing.school_district %}
+- School district: {{ row.listing.school_district }}; verify boundaries before relying on it.
+{% endif %}
+
+**Source-backed checks**
+
+{% for item in row.source_highlights[:8] %}
+- {{ item }}
+{% else %}
+- Public/GIS source checks have not produced additional highlights yet.
+{% endfor %}
+{% if row.source_links %}
+- Source links:
+{% for source in row.source_links[:8] %}
+  - [{{ source.source_name }} - {{ source.record_type }}]({{ source.source_url }}) ({{ source.confidence }})
+{% endfor %}
+{% endif %}
+{% if row.amenity_distances %}
+- Nearby amenity facts:
+{% for amenity in row.amenity_distances[:5] %}
+  - {{ amenity.amenity_type|title }}: {{ amenity.amenity_name or "Unnamed" }}{{ " (" ~ "%.1f"|format(amenity.distance_miles) ~ " mi)" if amenity.distance_miles is not none else "" }}
+{% endfor %}
+{% endif %}
+
+**Maintenance / roof read**
+
+{% if row.maintenance_context %}
+- Roof signal: {{ row.maintenance_context.roof_summary or "Roof age not found in accessible listing/public records." }}
+{% if row.maintenance_context.roof_replacement_year %}
+- Reported roof replacement year: {{ row.maintenance_context.roof_replacement_year }}; verify permit, invoice, warranty transfer, and insurance-claim history.
+{% else %}
+- Reported roof replacement year: Unknown; ask for seller disclosure, permits, paid invoice, and transferable warranty.
+{% endif %}
+{% for item in row.maintenance_context.maintenance_flags or [] %}
+- Maintenance watchout: {{ item }}
+{% endfor %}
+{% if row.maintenance_context.permit_lookup_note %}
+- Permit lookup: {{ row.maintenance_context.permit_lookup_note }}
+{% endif %}
+{% else %}
+- Roof/maintenance context has not been populated yet.
+{% endif %}
+{% if row.storm_context %}
+- Storm screen: NOAA records show {{ row.storm_context.severe_event_count_2024_2025 }} county-level hail/wind/tornado event(s) in {{ row.storm_context.county }} during 2024-2025; this does not prove property damage but raises roof, gutter, tree, and insurance-claim diligence.
+{% endif %}
+
+**Critical read**
+
+{% if row.latest_sale_read %}
+{% if row.latest_sale_read.is_stale %}
+- Latest parcel-reported sale was {{ row.latest_sale_read.sale_price|money }}{% if row.latest_sale_read.sale_date %} from {{ row.latest_sale_read.sale_date }}{% endif %}{% if row.latest_sale_read.age_years is not none %} ({{ row.latest_sale_read.age_years }} years old){% endif %}; use it as ownership history and ask what updates/comps justify {{ row.listing.list_price|money }}.
+{% else %}
+- Listing price {{ row.listing.list_price|money }} is {{ row.latest_sale_read.abs_delta|money }} {{ row.latest_sale_read.direction }} latest parcel-reported sale {{ row.latest_sale_read.sale_price|money }}{% if row.latest_sale_read.sale_date %} from {{ row.latest_sale_read.sale_date }}{% endif %}; verify with comps and condition.
+{% endif %}
+{% endif %}
+{% for commute in row.commute_estimates if commute.anchor_category == "work" %}
+- Work-anchor commute: {{ commute.duration_minutes }} min / {{ commute.distance_miles }} mi via {{ commute.source_name }}; verify in rush-hour.
+{% else %}
+- Work-anchor commute is still missing.
+{% endfor %}
+{% if row.montessori_options %}
+- Montessori/daycare: nearest Montessori-tagged option is {{ row.montessori_options[0].amenity_name }}{% if row.montessori_options[0].distance_miles is not none %} ({{ "%.1f"|format(row.montessori_options[0].distance_miles) }} mi){% endif %}.
+{% elif row.childcare_options %}
+- Daycare: childcare/school options exist, but no Montessori-tagged option was found in OSM.
+{% else %}
+- Daycare: no childcare/Montessori option is currently stored.
+{% endif %}
+{% for item in row.explanation.risk.negative_drivers[:2] + row.explanation.value.negative_drivers[:1] %}
+- Watchout: {{ item }}
+{% endfor %}
+
+**Market / community context**
+
+{% if row.market_context %}
+- ZIP market trend: {{ row.market_context.market_label }}; Zillow ZHVI {{ row.market_context.latest_month }} {{ row.market_context.latest_zhvi|money }}, {{ row.market_context.zhvi_3m_change_pct }}% over 3 months and {{ row.market_context.zhvi_12m_change_pct }}% over 12 months.
+{% else %}
+- ZIP market trend: not populated yet.
+{% endif %}
+{% if row.community_context %}
+- ACS community context: tract {{ row.community_context.tract_geoid }} has population {{ row.community_context.population|round|int }}, median household income {{ row.community_context.median_household_income|money }}, median owner-occupied home value {{ row.community_context.median_home_value|money }}, {{ row.community_context.owner_occupied_pct }}% owner-occupied housing, and {{ row.community_context.housing_built_1979_or_earlier_pct }}% housing built 1979 or earlier.
+{% else %}
+- ACS community context: not populated yet. Protected-class demographic fields are intentionally excluded from scoring.
+{% endif %}
+
+**Cannot responsibly score yet**
+
+{% for missing in row.top_missing %}
+- {{ missing }}
+{% else %}
+- No major missing fields were detected, but verify listing and public-record details.
+{% endfor %}
+
+**Best next questions**
+
+{% for question in row.top_questions[:4] %}
+- {{ question }}
+{% else %}
+- What is the current list price, beds, baths, finished sqft, lot size, year built, garage spaces, taxes, and listing URL?
+{% endfor %}
+- Is the street quiet in practice, or is there road/freeway/train noise?
+- Where is the practical Life Time option from this home?
+- Which Montessori/daycare options are practical relative to home and the configured work anchor?
+
+{% endfor %}
+
+## Data Needed For The Next Pass
+
+- Listing URLs or CSV export with price, beds, baths, sqft, lot size, year built, garage spaces, taxes, status, and description.
+- Listing photos or copied listing text so condition, basement, mechanical, garage, and road-noise clues can be reviewed.
+- Routing/amenity providers or local GIS sources for Life Time, Montessori/daycare, parks, trails, and commute estimates.
+- Additional public records where available for sale history, permits, flood zone, school-boundary verification, and tax detail.
+- Any agent notes, disclosures, seller timing, offer deadline, or inspection reports.
+
+## Recommended Next Action
+
+Keep these homes as **diligence-ranked candidates**. Do not tour or reject from
+this pass alone. Verify listing details, disclosures, commute timing,
+Montessori/daycare availability, and material public-record flags before making
+tour or offer decisions.

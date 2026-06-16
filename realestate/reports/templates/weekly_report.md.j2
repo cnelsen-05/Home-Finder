@@ -1,0 +1,39 @@
+# Weekly Real Estate Summary - Week of {{ today }}
+
+## Executive Summary
+
+{{ rows|length }} homes are currently tracked. Scores are deterministic and depend on imported data quality.
+
+## Top Homes Right Now
+
+{% for row in rows[:5] %}
+- {{ row.address }}: {{ row.score.overall_score|score }}, {{ row.bucket|bucket_label }}.
+{% else %}
+- No homes imported yet.
+{% endfor %}
+
+## Biggest Tradeoffs
+
+{% for row in rows[:5] %}
+- {{ row.address }}: {{ row.top_missing[:2] | join("; ") or "Few missing fields detected." }}
+{% else %}
+- Add favorites to compare tradeoffs.
+{% endfor %}
+
+## Price/Status Changes
+
+- Re-import exports or user-provided listing text to create snapshots and detect price/status changes.
+
+## Open Houses
+
+- Open-house tracking will use user-provided exports or email alerts in a later phase.
+
+## Preference Learning Update
+
+- Feedback is stored with each favorite. Use `realestate feedback LISTING_ID --rating like|strong_like|maybe|dislike|reject --notes "..."`
+
+## Recommended Next Actions
+
+- Tour the strongest candidates first.
+- Ask agent questions for homes with high uncertainty.
+- Drop low-priority homes unless price or facts change.

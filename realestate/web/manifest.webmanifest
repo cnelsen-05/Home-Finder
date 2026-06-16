@@ -1,0 +1,11 @@
+{
+  "name": "HomeAnalyze Map Hub",
+  "short_name": "HomeAnalyze",
+  "description": "Private Twin Cities home-search map and touring workspace.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef1ec",
+  "theme_color": "#27615a",
+  "orientation": "any",
+  "icons": []
+}

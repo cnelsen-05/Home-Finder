@@ -1,0 +1,167 @@
+# Neighborhood Area Report: {{ neighborhood.name }}
+
+Generated {{ today }}. This report separates user observations from sourced facts.
+It is private decision support, not appraisal, brokerage, legal, inspection, or
+school-assignment advice.
+
+## User Notes
+
+- Rating: {{ neighborhood.rating|replace("_", " ")|title }}
+- City: {{ neighborhood.city or "Unknown" }}
+- Tags: {{ tags|join(", ") if tags else "None yet" }}
+- Notes: {{ neighborhood.notes or "None yet" }}
+
+## Neighborhood Fit Score
+
+- Overall: {{ fit_score.overall_score|score }}
+- Confidence: {{ fit_score.confidence|title }}
+- User signal: {{ fit_score.user_signal_score|score }}
+- Parks/trails/playgrounds: {{ fit_score.amenity_score|score }}
+- Commute context: {{ fit_score.commute_score|score }}
+- School-zone data context: {{ fit_score.school_score|score }}
+- Quiet-street / risk context: {{ fit_score.risk_score|score }}
+- Scoring note: {{ fit_score.source_note }}
+
+Strengths:
+{% for item in fit_score.positive_drivers %}
+- {{ item }}
+{% else %}
+- No strong scored fit drivers yet.
+{% endfor %}
+
+Concerns / Missing Data:
+{% for item in fit_score.concerns %}
+- {{ item }}
+{% endfor %}
+{% for item in fit_score.missing_data %}
+- Missing: {{ item }}
+{% else %}
+{% if not fit_score.concerns %}- No major scored concerns are currently recorded.{% endif %}
+{% endfor %}
+
+## Homes Inside The Area
+
+{% for row in homes_inside %}
+- {{ row.address }}{% if row.listing and row.listing.list_price %}: {{ row.listing.list_price|money }}{% endif %}. Favorite signal: {{ row.favorite.user_rating if row.favorite else "not rated" }}.
+{% else %}
+- No favorited homes are currently inside this saved area.
+{% endfor %}
+
+## Homes Nearby
+
+{% for row in homes_nearby %}
+- {{ row.address }}{% if row.distance_miles is not none %}: {{ "%.2f"|format(row.distance_miles) }} mi from boundary{% endif %}. Favorite signal: {{ row.favorite.user_rating if row.favorite else "not rated" }}.
+{% else %}
+- No favorited homes are currently within the configured nearby radius.
+{% endfor %}
+
+## Elementary Attendance Zones Included
+
+{% for zone in elementary_zones %}
+- {{ zone.school_name }}{% if zone.district_name %}, {{ zone.district_name }}{% endif %}{% if zone.school_year %} ({{ zone.school_year }}){% endif %}. Source: {{ zone.source_name }}{% if zone.source_url %} - {{ zone.source_url }}{% endif %}. Confidence: {{ zone.confidence|title }}.
+{% if zone.school_location %}
+  - School location: {{ zone.school_location.name }}{% if zone.school_location.address %}, {{ zone.school_location.address }}{% endif %} via {{ zone.school_location.source_name }}.
+{% endif %}
+{% for profile in zone.academic_profiles %}
+  - {{ profile.source_name }}{% if profile.state_rank %}: #{{ profile.state_rank }} in Minnesota public elementary context{% endif %}{% if profile.rating_label %}; rating {{ profile.rating_label }}{% endif %}{% if profile.student_teacher_ratio %}; student-teacher ratio {{ profile.student_teacher_ratio }}:1{% endif %}. Source: {{ profile.source_url or "not captured" }}. Verify at source.
+{% endfor %}
+{% else %}
+- No imported elementary attendance zones intersect this saved area yet.
+{% endfor %}
+
+School-zone assignments are likely matches based on imported public data. Verify
+directly with the district before relying, especially near boundaries.
+
+## Parks / Trails / Playgrounds Nearby
+
+{% for amenity in nearby_amenities %}
+- {{ amenity.category|replace("_", " ")|title }}: {{ amenity.name }} ({{ "%.2f"|format(amenity.distance_miles) }} mi) via {{ amenity.source_name }} ({{ amenity.confidence }} confidence).
+{% else %}
+- No imported park, trail, playground, or nature-reserve feature is within 1 mile,
+  or the parks/trails/playgrounds layer has not been imported yet.
+{% endfor %}
+
+OpenStreetMap coverage depends on community tagging. Verify park, trail, and
+playground details locally before relying.
+
+## Liked / Avoided Map Highlights
+
+{% for highlight in highlight_matches %}
+- {{ highlight.sentiment|title }} {{ highlight.highlight_type|replace("_", " ") }}: {{ highlight.name }}{% if highlight.distance_miles is not none %} ({{ "%.2f"|format(highlight.distance_miles) }} mi){% endif %}. Relation: {{ highlight.relation|replace("_", " ") }}. Notes: {{ highlight.notes or "None yet." }}
+{% else %}
+- No liked/avoided street or pocket highlights intersect or sit near this saved area yet.
+{% endfor %}
+
+## Commute To Work Anchor
+
+- Area-level routing is not built yet. Use matched home commute estimates where
+  available, then verify during actual commute windows.
+
+## Nearby Life Time
+
+- Area-level Life Time overlay is not built yet. Store specific gym candidates as
+  life anchors or map notes when discovered.
+
+## Nearby Montessori / Daycare Options
+
+- Area-level daycare overlay is not built yet. Montessori/daycare is a plus, not a
+  hard requirement; verify licensing, availability, hours, and route.
+
+## Quiet-Street / Major-Road Screen
+
+{% if "quiet_street" in tags or "road_noise" in tags or "feels_too_busy" in tags %}
+{% if "quiet_street" in tags %}- User observation: quiet-street fit was tagged.{% endif %}
+{% if "road_noise" in tags %}- User observation: road-noise concern was tagged.{% endif %}
+{% if "feels_too_busy" in tags %}- User observation: feels too busy was tagged.{% endif %}
+{% else %}
+- No quiet-street or road-noise tag has been saved yet. Drive or walk the area
+  before prioritizing homes here.
+{% endif %}
+
+## Strengths
+
+{% if neighborhood.rating in ["favorite", "strong_like", "like"] %}
+- User rating suggests this pocket is worth comparing against new listings.
+{% endif %}
+{% if homes_inside %}
+- At least one favorited home is inside the saved boundary.
+{% endif %}
+{% if "parks" in tags or "trails" in tags or "playgrounds" in tags %}
+- User tags indicate parks, trails, or playground fit.
+{% endif %}
+{% if "good_commute" in tags %}
+- User tags indicate commute promise.
+{% endif %}
+{% if not homes_inside and not tags %}
+- Strengths are not recorded yet; add tour observations or nearby facts.
+{% endif %}
+
+## Concerns
+
+{% if neighborhood.rating == "avoid" %}
+- User rating is avoid; keep this as a caution area unless facts change.
+{% endif %}
+{% if "road_noise" in tags or "feels_too_busy" in tags %}
+- User tags include busyness or road-noise concern.
+{% endif %}
+{% if not elementary_zones %}
+- School-zone overlay is missing for this area.
+{% endif %}
+{% if not homes_inside and not homes_nearby %}
+- No tracked homes are connected to this area yet.
+{% endif %}
+
+## Open Questions
+
+- Which exact streets inside this boundary felt best after driving or walking?
+- Are there major-road, freeway, rail, or cut-through traffic issues at commute times?
+- Which parks, trails, and playgrounds are practically usable from this area?
+- Which elementary assignment applies to specific addresses, verified with the district?
+- Would we consider homes throughout the area or only a smaller pocket?
+
+## Recommended Next Actions
+
+- Re-run `realestate match-homes-to-neighborhoods` after importing or geocoding new homes.
+- Add map notes after each tour pass.
+- Verify school assignment directly with the district before relying.
+- Revisit this area if it is tagged `tour_again`, `favorite_pocket`, or `needs_more_research`.

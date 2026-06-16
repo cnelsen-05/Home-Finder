@@ -1,0 +1,22 @@
+# Buyer Agent Questions: {{ address }}
+
+## Listing-Specific Questions
+
+{% for flag in issue_flags %}
+- {{ flag.description }}
+{% else %}
+- No generated issue flags yet; ask the baseline diligence questions below.
+{% endfor %}
+
+## Baseline Diligence
+
+- Is there an offer deadline?
+- What is the seller's timing and motivation?
+- What comps justify the current asking price?
+- Are disclosures, inspection reports, permits, or receipts available?
+- What are the ages of roof, furnace, AC, water heater, electrical panel, and major appliances?
+- Has the sewer line been scoped, especially for older homes?
+- Any water intrusion, seepage, foundation, mold, radon, or drain tile history?
+- Any insurance claims, easements, zoning issues, shared driveway terms, or unusual restrictions?
+- Are current and proposed property taxes confirmed from public records?
+- Is a home-sale contingency realistic?

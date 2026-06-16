@@ -1,0 +1,1 @@
+"""Compliant public-record adapters."""

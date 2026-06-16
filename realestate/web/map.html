@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeAnalyze Map Hub</title>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#27615a">
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/static/vendor/leaflet-draw/leaflet.draw.css">
+  <link rel="stylesheet" href="/static/map.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <header class="brand">
+        <div>
+          <h1>HomeAnalyze</h1>
+          <p>Twin Cities decision map</p>
+        </div>
+      </header>
+
+      <label class="field-label" for="searchBox">Search</label>
+      <input id="searchBox" class="text-input" placeholder="Address or pocket name">
+
+      <section class="panel-section">
+        <h2>Layers</h2>
+        <label><input type="checkbox" data-layer="homes" checked> Favorite homes</label>
+        <label><input type="checkbox" data-layer="neighborhoods" checked> Saved neighborhoods</label>
+        <label><input type="checkbox" data-layer="mapHighlights" checked> Liked/avoided highlights</label>
+        <label><input type="checkbox" data-layer="schoolZones"> Elementary zones</label>
+        <label><input type="checkbox" data-layer="schoolLocations"> Elementary school locations</label>
+        <label><input type="checkbox" data-layer="parksTrails"> Parks/trails/playgrounds</label>
+        <label><input type="checkbox" data-layer="lifeAnchors" checked> Life anchors</label>
+        <label><input type="checkbox" data-layer="mapNotes" checked> Map notes</label>
+      </section>
+
+      <section class="panel-section">
+        <h2>Quick Highlight</h2>
+        <div class="highlight-actions">
+          <button type="button" data-highlight-mode="liked_area">Liked Area</button>
+          <button type="button" data-highlight-mode="avoid_area" class="danger-button">Avoid Area</button>
+          <button type="button" data-highlight-mode="liked_street" class="ghost-button">Liked Street</button>
+          <button type="button" data-highlight-mode="avoid_street" class="warning-button">Avoid Street</button>
+        </div>
+        <p id="highlightModeHint" class="meta">Draw exact streets or pockets you liked or want to avoid.</p>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-title-row">
+          <h2>Homes</h2>
+          <span id="homeCount">0</span>
+        </div>
+        <form id="addHomeForm" class="form-grid add-home-form">
+          <label class="field-label" for="newHomeAddress">Add Favorite</label>
+          <input id="newHomeAddress" class="text-input" placeholder="Street, city, state zip">
+          <select id="newHomeRating">
+            <option value="maybe">maybe</option>
+            <option value="strong_like">strong like</option>
+            <option value="like">like</option>
+            <option value="dislike">dislike</option>
+          </select>
+          <textarea id="newHomeNotes" class="text-area compact-area" placeholder="Quick note"></textarea>
+          <label><input id="newHomeGeocode" type="checkbox" checked> Try to place on map</label>
+          <label><input id="newHomeUseClick" type="checkbox"> Use last map click as pin</label>
+          <button id="addHomeButton" type="submit">Add Home</button>
+          <p id="addHomeStatus" class="meta"></p>
+        </form>
+        <div id="homeList" class="list"></div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-title-row">
+          <h2>Saved Areas</h2>
+          <span id="areaCount">0</span>
+        </div>
+        <div id="areaList" class="list"></div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-title-row">
+          <h2>Highlights</h2>
+          <span id="highlightCount">0</span>
+        </div>
+        <div id="highlightList" class="list"></div>
+      </section>
+    </aside>
+
+    <main class="map-wrap">
+      <div id="map"></div>
+      <div class="mobile-action-bar" aria-label="Mobile map actions">
+        <button id="mobileOpenMenu" class="ghost-button" type="button">Menu</button>
+        <button id="mobileOpenDetails" class="ghost-button" type="button">Details</button>
+        <button id="mobileUseLocation" type="button">My Location</button>
+        <button id="mobileQuickLike" type="button">Like Area</button>
+      </div>
+    </main>
+
+    <aside class="details">
+      <div class="details-header">
+        <h2 id="detailsTitle">Map Hub</h2>
+        <button id="refreshButton" class="ghost-button" type="button">Refresh</button>
+      </div>
+      <div id="detailsBody" class="details-body"></div>
+      <section class="quick-note">
+        <h3>Quick Note</h3>
+        <input id="noteTitle" class="text-input" placeholder="Title">
+        <textarea id="noteBody" class="text-area" placeholder="Observation"></textarea>
+        <button id="saveNoteButton" type="button">Save Note</button>
+      </section>
+    </aside>
+  </div>
+
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script src="/static/vendor/leaflet-draw/leaflet.draw.js"></script>
+  <script src="/static/map.js"></script>
+</body>
+</html>
