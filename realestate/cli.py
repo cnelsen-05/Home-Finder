@@ -7,7 +7,7 @@ import typer
 from sqlalchemy import select
 
 from realestate.config import load_preferences
-from realestate.db import init_database, session_scope
+from realestate.db import HostedDatabaseNotConfigured, database_mode, init_database, session_scope
 from realestate.db_transfer import (
     backup_database_to_json,
     database_status,
@@ -122,7 +122,16 @@ def db_backup(
 def db_status() -> None:
     """Show database mode, persistence, and table counts."""
 
-    status = database_status()
+    try:
+        status = database_status()
+    except HostedDatabaseNotConfigured as exc:
+        database = database_mode()
+        typer.echo(f"Mode: {database['mode']}")
+        typer.echo(f"URL: {database['url']}")
+        typer.echo(f"Hosted runtime: {database['hosted']}")
+        typer.echo(f"Persistent: {database['persistent']}")
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(2) from exc
     database = status["database"]
     typer.echo(f"Mode: {database['mode']}")
     typer.echo(f"URL: {database['url']}")
