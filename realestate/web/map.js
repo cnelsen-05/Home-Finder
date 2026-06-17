@@ -32,6 +32,7 @@ const state = {
   activeNeighborhoodId: null,
   activeSchoolZoneId: null,
   activeDrawHandler: null,
+  mobileDrag: null,
   pendingHighlightMode: null,
   lazyData: {
     schoolZones: null,
@@ -140,6 +141,15 @@ function bindStaticControls() {
   document.getElementById("addProfileButton").addEventListener("click", addProfile);
   document.getElementById("mobileOpenMenu")?.addEventListener("click", () => toggleMobilePanel("menu"));
   document.getElementById("mobileOpenDetails")?.addEventListener("click", () => toggleMobilePanel("details"));
+  document.getElementById("mobileSheetBackdrop")?.addEventListener("click", closeMobilePanels);
+  document.querySelectorAll("[data-mobile-dismiss]").forEach((button) => {
+    button.addEventListener("click", closeMobilePanels);
+  });
+  bindMobileSheetGestures();
+  window.addEventListener("resize", updateMobileNavState);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeMobilePanels();
+  });
   document.getElementById("mobileUseLocation")?.addEventListener("click", useCurrentLocation);
   document.getElementById("mobileQuickLike")?.addEventListener("click", () => {
     closeMobilePanels();
@@ -155,20 +165,154 @@ function toggleMobilePanel(panel) {
   const details = document.querySelector(".details");
   const target = panel === "menu" ? sidebar : details;
   const alreadyOpen = target.classList.contains("mobile-open");
-  sidebar.classList.remove("mobile-open");
-  details.classList.remove("mobile-open");
-  if (!alreadyOpen) target.classList.add("mobile-open");
+  if (alreadyOpen) {
+    closeMobilePanels();
+    return;
+  }
+  openMobilePanel(panel);
 }
 
 function openMobilePanel(panel) {
-  if (!window.matchMedia("(max-width: 760px)").matches) return;
-  document.querySelector(".sidebar").classList.toggle("mobile-open", panel === "menu");
-  document.querySelector(".details").classList.toggle("mobile-open", panel === "details");
+  if (!isMobileViewport()) return;
+  const sidebar = document.querySelector(".sidebar");
+  const details = document.querySelector(".details");
+  sidebar.classList.remove("mobile-open");
+  details.classList.remove("mobile-open");
+  resetMobilePanelDrag(sidebar);
+  resetMobilePanelDrag(details);
+  if (panel === "menu") sidebar.classList.add("mobile-open");
+  if (panel === "details") details.classList.add("mobile-open");
+  updateMobileNavState();
 }
 
 function closeMobilePanels() {
-  document.querySelector(".sidebar").classList.remove("mobile-open");
-  document.querySelector(".details").classList.remove("mobile-open");
+  const sidebar = document.querySelector(".sidebar");
+  const details = document.querySelector(".details");
+  sidebar.classList.remove("mobile-open");
+  details.classList.remove("mobile-open");
+  resetMobilePanelDrag(sidebar);
+  resetMobilePanelDrag(details);
+  updateMobileNavState();
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 760px)").matches;
+}
+
+function updateMobileNavState() {
+  const sidebar = document.querySelector(".sidebar");
+  const details = document.querySelector(".details");
+  const menuOpen = Boolean(sidebar?.classList.contains("mobile-open"));
+  const detailsOpen = Boolean(details?.classList.contains("mobile-open"));
+  const hasOpenPanel = isMobileViewport() && (menuOpen || detailsOpen);
+  document.body.classList.toggle("mobile-panel-active", hasOpenPanel);
+  const backdrop = document.getElementById("mobileSheetBackdrop");
+  if (backdrop) backdrop.hidden = !hasOpenPanel;
+  const menuButton = document.getElementById("mobileOpenMenu");
+  const detailsButton = document.getElementById("mobileOpenDetails");
+  if (menuButton) {
+    menuButton.classList.toggle("active", menuOpen);
+    menuButton.setAttribute("aria-expanded", String(menuOpen));
+  }
+  if (detailsButton) {
+    detailsButton.classList.toggle("active", detailsOpen);
+    detailsButton.setAttribute("aria-expanded", String(detailsOpen));
+  }
+}
+
+function bindMobileSheetGestures() {
+  document.querySelectorAll(".sidebar, .details").forEach((panel) => {
+    panel.addEventListener("touchstart", startMobilePanelDrag, { passive: true });
+    panel.addEventListener("touchmove", moveMobilePanelDrag, { passive: false });
+    panel.addEventListener("touchend", endMobilePanelDrag, { passive: true });
+    panel.addEventListener("touchcancel", endMobilePanelDrag, { passive: true });
+    panel.addEventListener("mousedown", startMousePanelDrag);
+  });
+  document.addEventListener("mousemove", moveMousePanelDrag);
+  document.addEventListener("mouseup", endMobilePanelDrag);
+}
+
+function startMobilePanelDrag(event) {
+  if (!isMobileViewport() || !event.touches?.length) return;
+  beginMobilePanelDrag(
+    event.currentTarget,
+    event.target,
+    event.touches[0].clientX,
+    event.touches[0].clientY,
+    "touch",
+  );
+}
+
+function startMousePanelDrag(event) {
+  if (event.button !== 0) return;
+  beginMobilePanelDrag(event.currentTarget, event.target, event.clientX, event.clientY, "mouse");
+}
+
+function beginMobilePanelDrag(panel, target, clientX, clientY, inputType) {
+  if (!isMobileViewport()) return;
+  if (!panel.classList.contains("mobile-open")) return;
+  const handle = target.closest?.(".mobile-sheet-handle");
+  const interactive = target.closest?.("input, textarea, select, button, a, label");
+  const rect = panel.getBoundingClientRect();
+  const nearTop = clientY - rect.top <= 74;
+  if (!handle && interactive) return;
+  if (!handle && !nearTop && panel.scrollTop > 0) return;
+  state.mobileDrag = {
+    panel,
+    startX: clientX,
+    startY: clientY,
+    lastY: clientY,
+    active: false,
+    handle: Boolean(handle),
+    nearTop,
+    startScrollTop: panel.scrollTop,
+    inputType,
+  };
+}
+
+function moveMobilePanelDrag(event) {
+  const drag = state.mobileDrag;
+  if (!drag || drag.inputType !== "touch" || !event.touches?.length) return;
+  moveMobilePanelDragTo(event, event.touches[0].clientX, event.touches[0].clientY);
+}
+
+function moveMousePanelDrag(event) {
+  const drag = state.mobileDrag;
+  if (!drag || drag.inputType !== "mouse") return;
+  moveMobilePanelDragTo(event, event.clientX, event.clientY);
+}
+
+function moveMobilePanelDragTo(event, clientX, clientY) {
+  const drag = state.mobileDrag;
+  if (!drag) return;
+  const dx = clientX - drag.startX;
+  const dy = clientY - drag.startY;
+  drag.lastY = clientY;
+  if (dy <= 0) return;
+  if (!drag.active && dy < 12) return;
+  if (!drag.active && Math.abs(dx) > dy) return;
+  const panelAtTop = drag.panel.scrollTop <= 0 || drag.startScrollTop <= 0;
+  if (!drag.handle && !drag.nearTop && !panelAtTop) return;
+  drag.active = true;
+  drag.panel.classList.add("mobile-dragging");
+  drag.panel.style.transform = `translateY(${Math.min(dy, 220)}px)`;
+  event.preventDefault();
+}
+
+function endMobilePanelDrag() {
+  const drag = state.mobileDrag;
+  if (!drag) return;
+  const dy = drag.lastY - drag.startY;
+  const shouldClose = drag.active && dy > 78;
+  resetMobilePanelDrag(drag.panel);
+  state.mobileDrag = null;
+  if (shouldClose) closeMobilePanels();
+}
+
+function resetMobilePanelDrag(panel) {
+  if (!panel) return;
+  panel.classList.remove("mobile-dragging");
+  panel.style.transform = "";
 }
 
 function useCurrentLocation() {
