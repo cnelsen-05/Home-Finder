@@ -20,3 +20,5 @@ data/report_server*.log
 !data/cache/.gitkeep
 !data/raw/.gitkeep
 !data/exports/.gitkeep
+
+.vercel
