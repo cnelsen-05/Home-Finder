@@ -22,3 +22,5 @@ data/report_server*.log
 !data/exports/.gitkeep
 
 .vercel
+.agents/
+skills-lock.json
