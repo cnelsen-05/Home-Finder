@@ -28,6 +28,7 @@ const state = {
   schoolZoneLayers: new Map(),
   userLocationMarker: null,
   currentProfileId: Number(localStorage.getItem("homeanalyzeProfileId")) || null,
+  profiles: null,
   activeNeighborhoodId: null,
   activeSchoolZoneId: null,
   activeDrawHandler: null,
@@ -42,6 +43,8 @@ const state = {
 document.addEventListener("DOMContentLoaded", () => {
   initMap();
   bindStaticControls();
+  renderProfileSelector();
+  loadProfiles();
   loadMapData();
   registerServiceWorker();
   window.addEventListener("online", flushQueuedNotes);
@@ -207,17 +210,39 @@ function registerServiceWorker() {
 }
 
 async function loadMapData() {
-  state.data = await api("/api/map-data");
-  const currentProfile = state.data.profiles?.current_profile;
-  if (currentProfile?.id && currentProfile.id !== state.currentProfileId) {
-    state.currentProfileId = currentProfile.id;
-    localStorage.setItem("homeanalyzeProfileId", String(currentProfile.id));
+  try {
+    state.data = await api("/api/map-data");
+    state.profiles = state.data.profiles || state.profiles;
+    const currentProfile = state.profiles?.current_profile;
+    if (currentProfile?.id && currentProfile.id !== state.currentProfileId) {
+      state.currentProfileId = currentProfile.id;
+      localStorage.setItem("homeanalyzeProfileId", String(currentProfile.id));
+    }
+    renderProfileSelector();
+    renderLayers();
+    renderLists();
+    renderWelcome();
+    flushQueuedNotes();
+  } catch (error) {
+    document.getElementById("detailsTitle").textContent = "Map Hub";
+    document.getElementById("detailsBody").innerHTML = `
+      <div class="warning">Could not load map data yet. Refresh after a moment. ${escapeHtml(error.message || "")}</div>
+    `;
   }
-  renderProfileSelector();
-  renderLayers();
-  renderLists();
-  renderWelcome();
-  flushQueuedNotes();
+}
+
+async function loadProfiles() {
+  try {
+    state.profiles = await api("/api/profiles");
+    const currentProfile = state.profiles?.current_profile;
+    if (currentProfile?.id) {
+      state.currentProfileId = currentProfile.id;
+      localStorage.setItem("homeanalyzeProfileId", String(currentProfile.id));
+    }
+    renderProfileSelector();
+  } catch (_error) {
+    renderProfileSelector();
+  }
 }
 
 function renderLayers() {
@@ -1322,8 +1347,15 @@ function defaultHighlightTags(type) {
 function renderProfileSelector() {
   const select = document.getElementById("profileSelect");
   if (!select) return;
-  const profiles = state.data?.profiles?.profiles || [];
-  const current = state.data?.profiles?.current_profile || profiles[0];
+  const profilePayload = state.profiles || state.data?.profiles;
+  const profiles = profilePayload?.profiles || [];
+  const current = profilePayload?.current_profile || profiles.find((profile) => profile.id === state.currentProfileId) || profiles[0];
+  if (!profiles.length) {
+    select.innerHTML = `<option value="">Loading profiles...</option>`;
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
   select.innerHTML = profiles
     .map((profile) => `<option value="${profile.id}" ${profile.id === current?.id ? "selected" : ""}>${escapeHtml(profile.display_name)}</option>`)
     .join("");
@@ -1349,6 +1381,7 @@ async function addProfile() {
     method: "POST",
     body: { display_name: displayName.trim() },
   });
+  state.profiles = payload;
   const current = payload.current_profile;
   if (current?.id) {
     state.currentProfileId = current.id;
@@ -1359,9 +1392,10 @@ async function addProfile() {
 }
 
 function currentProfileLabel() {
-  const current = state.data?.profiles?.current_profile;
+  const profilePayload = state.profiles || state.data?.profiles;
+  const current = profilePayload?.current_profile;
   if (current?.display_name) return current.display_name;
-  const match = (state.data?.profiles?.profiles || []).find((profile) => profile.id === state.currentProfileId);
+  const match = (profilePayload?.profiles || []).find((profile) => profile.id === state.currentProfileId);
   return match?.display_name || "Selected profile";
 }
 
